@@ -75,16 +75,29 @@ def make_layout() -> Layout:
     return layout
 
 
-def render_table(rows: list[dict[str, Any]], focus_key: str) -> Table:
+def page_count(n_rows: int) -> int:
+    if n_rows <= 0:
+        return 1
+    return (n_rows + TABLE_ROWS - 1) // TABLE_ROWS
+
+
+def clamp_offset(offset: int, n_rows: int) -> int:
+    max_off = max(0, (page_count(n_rows) - 1) * TABLE_ROWS)
+    return max(0, min(offset, max_off))
+
+
+def render_table(rows: list[dict[str, Any]], focus_key: str, offset: int = 0) -> Table:
     table = Table(expand=True, box=None, header_style="bold cyan", show_edge=False, pad_edge=False)
-    table.add_column("#", justify="right", style="dim", width=3)
+    table.add_column("#", justify="right", style="dim", width=4)
     table.add_column("Pair", style="bold")
     table.add_column("Last", justify="right")
     table.add_column("Today", justify="right")
     table.add_column("Spr bps", justify="right", style="dim")
     table.add_column("Trades", justify="right", style="dim")
     table.add_column("Vol $", justify="right", style="dim")
-    for i, row in enumerate(rows[:TABLE_ROWS], start=1):
+    offset = clamp_offset(offset, len(rows))
+    window = rows[offset : offset + TABLE_ROWS]
+    for i, row in enumerate(window, start=offset + 1):
         chg = row["change"]
         chg_text = Text(f"{chg:+.2f}%", style="green" if chg >= 0 else "red")
         pair = Text(row["pair"])
@@ -163,6 +176,14 @@ def read_keys() -> list[str]:
                 keys.append("up")
             elif extra == "[B":
                 keys.append("down")
+            elif extra == "[C":
+                keys.append("right")
+            elif extra == "[D":
+                keys.append("left")
+            elif extra.startswith("[5"):
+                keys.append("pgup")
+            elif extra.startswith("[6"):
+                keys.append("pgdn")
             else:
                 keys.append("esc")
         else:
@@ -170,28 +191,43 @@ def read_keys() -> list[str]:
     return keys
 
 
-def apply_keys(keys: list[str], rows: list[dict[str, Any]], focus_key: str) -> tuple[str, bool, bool]:
+def apply_keys(
+    keys: list[str], rows: list[dict[str, Any]], focus_key: str, offset: int = 0
+) -> tuple[str, bool, bool, int]:
     quit = False
     force_ohlc = False
-    visible = rows[:TABLE_ROWS]
-    keys_list = [r["key"] for r in visible]
-    idx = keys_list.index(focus_key) if focus_key in keys_list else 0
+    offset = clamp_offset(offset, len(rows))
+    all_keys = [r["key"] for r in rows]
+    global_idx = all_keys.index(focus_key) if focus_key in all_keys else offset
+
     for key in keys:
         if key in {"q", "Q", "\x03"}:
             quit = True
         elif key in {"k", "p", "up"}:
-            idx = max(0, idx - 1)
+            global_idx = max(0, global_idx - 1)
             force_ohlc = True
         elif key in {"j", "n", "down"}:
-            idx = min(len(keys_list) - 1, idx + 1)
+            global_idx = min(max(0, len(all_keys) - 1), global_idx + 1)
+            force_ohlc = True
+        elif key in {"]", "l", "right", "pgdn"}:
+            offset = clamp_offset(offset + TABLE_ROWS, len(rows))
+            global_idx = offset
+            force_ohlc = True
+        elif key in {"[", "h", "left", "pgup"}:
+            offset = clamp_offset(offset - TABLE_ROWS, len(rows))
+            global_idx = offset
             force_ohlc = True
         elif key == "r":
             force_ohlc = True
         elif key.isdigit() and key != "0":
-            pick = int(key) - 1
-            if pick < len(keys_list):
-                idx = pick
+            pick = offset + int(key) - 1
+            if 0 <= pick < len(all_keys):
+                global_idx = pick
                 force_ohlc = True
-    if keys_list:
-        focus_key = keys_list[idx]
-    return focus_key, quit, force_ohlc
+
+    if all_keys:
+        global_idx = min(global_idx, len(all_keys) - 1)
+        focus_key = all_keys[global_idx]
+        page = global_idx // TABLE_ROWS
+        offset = page * TABLE_ROWS
+    return focus_key, quit, force_ohlc, offset
