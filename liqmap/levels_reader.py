@@ -14,7 +14,8 @@ import json, time, urllib.request
 
 LEVELS_URL = "https://raw.githubusercontent.com/af34-design/kraken-scanner/liq-data/levels.json"
 COIN_IDS = {"BTC": "bitcoin", "XBT": "bitcoin", "ETH": "ethereum", "SOL": "solana", "XRP": "ripple",
-            "BNB": "binancecoin", "DOGE": "dogecoin", "XDG": "dogecoin", "CRO": "crypto-com-chain"}
+            "BNB": "binancecoin", "DOGE": "dogecoin", "XDG": "dogecoin", "CRO": "crypto-com-chain",
+            "PUMP": "pump-fun"}
 
 
 def load_levels(path_or_url=None):

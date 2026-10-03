@@ -25,6 +25,7 @@ COINS = {  # coin id -> (Kraken perpetual, Crypto.com perpetual or None, ticker)
     "binancecoin": ("PF_BNBUSD", None, "BNB"),
     "dogecoin": ("PF_DOGEUSD", "DOGEUSD-PERP", "DOGE"),
     "crypto-com-chain": ("PF_CROUSD", "CROUSD-PERP", "CRO"),
+    "pump-fun": ("PF_PUMPUSD", "PUMPUSD-PERP", "PUMP"),
 }
 H, H4 = 3600, 14400
 KEEP_HOURS = 120 * 24          # rolling hourly history kept per coin
