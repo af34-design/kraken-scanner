@@ -2,9 +2,12 @@ name: Liquidation heat map data
 
 # Pulls exact Kraken Futures + Crypto.com data every hour, computes liquidation
 # levels, and saves them to the `liq-data` branch (main is never touched).
+# GitHub delays or skips hourly cron runs on busy days, so each run also starts
+# the next one at 9 past the next hour (the `next` job). The cron below is only a
+# backup that restarts the chain if a run ever fails to hand off.
 on:
   schedule:
-    - cron: "9 * * * *"    # every hour, 9 minutes past (after Kraken's hourly data lands)
+    - cron: "9 * * * *"    # backup: every hour, 9 minutes past
   workflow_dispatch:
     inputs:
       backfill:
@@ -14,6 +17,7 @@ on:
 
 permissions:
   contents: write
+  actions: write           # lets a run start the next one
 
 concurrency:
   group: liq-heatmap
@@ -56,3 +60,20 @@ jobs:
           git add -A
           git commit -q --amend -m "liquidation heat map data" 2>/dev/null || git commit -q -m "liquidation heat map data"
           git push -f origin liq-data
+
+  next:
+    needs: collect
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - name: Wait for 9 past the next hour, then start the next run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          now=$(date +%s)
+          next=$(( now / 3600 * 3600 + 540 ))
+          if [ "$next" -le $(( now + 60 )) ]; then next=$(( next + 3600 )); fi
+          echo "Next run at $(date -u -d @$next +%H:%M) UTC"
+          sleep $(( next - now ))
+          gh workflow run liq-heatmap.yml --repo "$GITHUB_REPOSITORY" --ref main
