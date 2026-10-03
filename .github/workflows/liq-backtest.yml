@@ -1,0 +1,35 @@
+name: Liquidation heat map backtest
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Get collected data
+        run: git worktree add data origin/liq-data
+      - name: Run backtest
+        run: python liqmap/backtest.py --data data --out results
+      - name: Publish results to liq-backtest branch
+        run: |
+          git config user.name "liq-backtest"
+          git config user.email "actions@users.noreply.github.com"
+          cp results/backtest.json /tmp/backtest.json
+          git checkout --orphan liq-backtest
+          git rm -rfq --cached .
+          find . -mindepth 1 -maxdepth 1 ! -name .git ! -name data -exec rm -rf {} +
+          cp /tmp/backtest.json backtest.json
+          git add backtest.json
+          git commit -qm "Backtest results $(date -u +%FT%TZ)"
+          git push -f origin liq-backtest
