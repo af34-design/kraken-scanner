@@ -249,7 +249,7 @@ def main():
     report = {"generatedAt": int(time.time()), "settings": {
         "window": WINDOW, "step": STEP, "ahead": AHEAD, "react": REACT,
         "distanceRangePct": [DMIN, DMAX], "controlsPerEvent": N_CONTROLS}, "coins": {}, "bot": {}}
-    pooled = {"main": ([], []), "main_strong": ([], [])}
+    pooled = {"main": ([], []), "main_strong": ([], []), "strong_vs_same_moment": ([], [])}
 
     for coin, (kf, _cdc, tick) in C.COINS.items():
         path = os.path.join(args.data, "coins", f"{coin}.json")
@@ -283,11 +283,11 @@ def main():
                 if p:
                     o = outcome(side, p["d"], i, hi, lo, cl)
                     raw[side].append(dict(o, kind="c", d=p["d"], share=p["share"], usd=p["usd"],
-                                          day=day, coin=coin))
+                                          day=day, coin=coin, m=(i, side)))
                 for _ in range(N_CONTROLS):
                     d = rng.uniform(DMIN, DMAX)
                     o = outcome(side, d, i, hi, lo, cl)
-                    raw[side].append(dict(o, kind="r", d=d, day=day, coin=coin))
+                    raw[side].append(dict(o, kind="r", d=d, day=day, coin=coin, m=(i, side)))
 
         # expected hit chance at each distance from this coin's own excursions
         for side in ("up", "down"):
@@ -314,6 +314,10 @@ def main():
                       and e["usd"] >= C.ALERT_MIN_CLUSTER_USD]
             pooled["main_strong"][0].extend(strong)
             pooled["main_strong"][1].extend(ct_e)
+            # same moments and side as the strong clusters: controls for volatility regime
+            ms = {e["m"] for e in strong}
+            pooled["strong_vs_same_moment"][0].extend(strong)
+            pooled["strong_vs_same_moment"][1].extend(e for e in ct_e if e["m"] in ms)
 
         report["bot"][tick] = {v: bot_sim(cl, WINDOW, lv_fn, v) for v in
                                ("base", "avoid_long_cluster", "need_short_magnet", "cluster_stop")}
@@ -321,6 +325,8 @@ def main():
         C.log(f"{tick}: {len(cl_e)} cluster events, bot done")
 
     report["pooled"] = {k: summarize(a, b) for k, (a, b) in pooled.items() if a}
+    for e in pooled["main"][0] + pooled["main"][1]:
+        e.pop("m", None)
     json.dump(report, open(os.path.join(args.out, "backtest.json"), "w"), indent=1)
     C.log("wrote " + os.path.join(args.out, "backtest.json"))
 
