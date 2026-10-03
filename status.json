@@ -1,0 +1,17 @@
+{
+ "startedAt": 1792285752,
+ "ok": [
+  "bitcoin",
+  "ethereum",
+  "solana",
+  "ripple",
+  "binancecoin",
+  "dogecoin",
+  "crypto-com-chain",
+  "pump-fun"
+ ],
+ "failed": {},
+ "warnings": [],
+ "finishedAt": 1792285784,
+ "newAlerts": 0
+}
