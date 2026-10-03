@@ -45,7 +45,7 @@ jobs:
           LIQ_ALERT_PCT: ${{ vars.LIQ_ALERT_PCT }}   # optional, default 1.5 (% from a cluster)
         run: |
           python liqmap/collect.py --data data ${{ inputs.backfill && '--backfill' || '' }}
-          cp liqmap/sync_prepare.py data/sync_prepare.py   # lets the page sync read one branch
+          rm -f data/sync_prepare.py
 
       - name: Save to liq-data (single rolling commit keeps the branch small)
         if: always()

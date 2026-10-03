@@ -421,6 +421,13 @@ def main():
     status["newAlerts"] = len(new_alerts)
     with open(os.path.join(a.data, "status.json"), "w") as f:
         json.dump(status, f, indent=1)
+    # upload-ready documents for the heat map page (copied as-is by the hourly sync)
+    with open(os.path.join(a.data, "_overview.json"), "w") as f:
+        json.dump({k: v for k, v in levels.items() if k != "alertState"}, f, separators=(",", ":"))
+    with open(os.path.join(a.data, "_status.json"), "w") as f:
+        json.dump(dict(status, lastGeneratedAt=levels["generatedAt"]), f, separators=(",", ":"))
+    with open(os.path.join(a.data, "alerts.txt"), "w") as f:
+        f.write("\n".join(al["message"] for al in new_alerts))
     for al in new_alerts:
         log("ALERT " + al["message"])
     log(f"done: {len(status['ok'])} ok, {len(status['failed'])} failed")
