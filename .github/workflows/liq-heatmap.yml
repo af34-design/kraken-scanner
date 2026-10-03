@@ -1,0 +1,58 @@
+name: Liquidation heat map data
+
+# Pulls exact Kraken Futures + Crypto.com data every hour, computes liquidation
+# levels, and saves them to the `liq-data` branch (main is never touched).
+on:
+  schedule:
+    - cron: "9 * * * *"    # every hour, 9 minutes past (after Kraken's hourly data lands)
+  workflow_dispatch:
+    inputs:
+      backfill:
+        description: "Rebuild all history from scratch"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: liq-heatmap
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Open the data branch
+        run: |
+          if git ls-remote --exit-code --heads origin liq-data >/dev/null; then
+            git fetch --depth 1 origin liq-data
+            git worktree add data FETCH_HEAD
+            git -C data switch -C liq-data
+          else
+            git worktree add --orphan -b liq-data data
+          fi
+
+      - name: Collect
+        env:
+          LIQ_ALERT_PCT: ${{ vars.LIQ_ALERT_PCT }}   # optional, default 1.5 (% from a cluster)
+        run: |
+          python liqmap/collect.py --data data ${{ inputs.backfill && '--backfill' || '' }}
+          cp liqmap/sync_prepare.py data/sync_prepare.py   # lets the page sync read one branch
+
+      - name: Save to liq-data (single rolling commit keeps the branch small)
+        if: always()
+        working-directory: data
+        run: |
+          git config user.name "liq-heatmap"
+          git config user.email "liq-heatmap@users.noreply.github.com"
+          git add -A
+          git commit -q --amend -m "liquidation heat map data" 2>/dev/null || git commit -q -m "liquidation heat map data"
+          git push -f origin liq-data
