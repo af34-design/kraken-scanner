@@ -16,6 +16,7 @@ Writes into the --data folder (committed to the `liq-data` branch):
 Standard-library Python 3.8+ only. Market data, not financial advice.
 """
 import argparse, calendar, json, math, os, sys, time, urllib.request, urllib.error
+import extra
 
 COINS = {  # coin id -> (Kraken perpetual, Crypto.com perpetual or None, ticker)
     "bitcoin": ("PF_XBTUSD", "BTCUSD-PERP", "BTC"),
@@ -179,8 +180,23 @@ def trim_front(sr, keep, keys):
         sr["start"] += drop * sr["interval"]
 
 
+def snapshot(doc, key, t, oi, source, extra_fields=None):
+    """Append an hourly open-interest snapshot to doc[key] (same shape as the Crypto.com series)."""
+    sr = doc.setdefault(key, {"interval": H, "start": t - t % H, "oi": [], "updatedAt": 0, "source": source})
+    if extra_fields:
+        sr.update(extra_fields)
+    i = (t - t % H - sr["start"]) // H
+    if i < 0:
+        return
+    while len(sr["oi"]) <= i:
+        sr["oi"].append(None)
+    sr["oi"][i] = oi
+    sr["updatedAt"] = t
+    trim_front(sr, KEEP_HOURS, ["oi"])
+
+
 # ----------------------------- update one coin -----------------------------
-def update_coin(coin, path, backfill, status):
+def update_coin(coin, path, backfill, status, hl_now=None):
     kf, cdc, tk = COINS[coin]
     now = int(time.time())
     now_h = now - now % H
@@ -240,16 +256,12 @@ def update_coin(coin, path, backfill, status):
         try:
             c = cdc_ticker(cdc)
             if c and c["oi"] > 0 and now - c["t"] < 900:
-                sr = doc.setdefault("cdc", {"symbol": cdc, "interval": H, "start": c["t"] - c["t"] % H,
-                                            "oi": [], "updatedAt": 0, "source": "Crypto.com Exchange public tickers"})
-                i = (c["t"] - c["t"] % H - sr["start"]) // H
-                while len(sr["oi"]) <= i:
-                    sr["oi"].append(None)
-                sr["oi"][i] = c["oi"]
-                sr["updatedAt"] = c["t"]
-                trim_front(sr, KEEP_HOURS, ["oi"])
+                snapshot(doc, "cdc", c["t"], c["oi"], "Crypto.com Exchange public tickers", {"symbol": cdc})
         except Exception as e:
             status["warnings"].append(f"{tk} Crypto.com: {e}")
+    # Hyperliquid open interest snapshot
+    if hl_now and hl_now.get("oi", 0) > 0:
+        snapshot(doc, "hl", now, hl_now["oi"], "Hyperliquid public info API", {"symbol": tk})
     trim_front(doc, KEEP_HOURS, ["oi", "liq"])
     trim_front(fd, KEEP_HOURS, ["rate"])
     if doc.get("coarse"):
@@ -277,9 +289,10 @@ def build_levels(doc, times, prices):
     rsum = rn = 0
     for i in range(1, n):
         o0, o1 = oi_at(doc, times[i - 1]), oi_at(doc, times[i])
-        if o0 is not None and o1 is not None:
-            c0, c1 = series_at(doc.get("cdc"), times[i - 1]), series_at(doc.get("cdc"), times[i])
-            d = (o1 - o0 + ((c1 - c0) if c0 is not None and c1 is not None else 0)) * prices[i]
+        ext = [(series_at(doc.get(k), times[i - 1]), series_at(doc.get(k), times[i])) for k in ("cdc", "hl")]
+        ext = [b - a0 for a0, b in ext if a0 is not None and b is not None]
+        if (o0 is not None and o1 is not None) or ext:
+            d = (((o1 - o0) if o0 is not None and o1 is not None else 0) + sum(ext)) * prices[i]
             real[i] = 1
             if d > 0:
                 add[i] = d
@@ -370,19 +383,46 @@ def main():
     alert_state = prev.get("alertState", {})
     history = prev.get("alertHistory", [])
     levels = {"generatedAt": int(time.time()), "alertPct": ALERT_PCT, "coins": {},
-              "note": "Estimated liquidation levels from Kraken + Crypto.com open interest. Market data, not trade signals."}
+              "note": "Estimated liquidation levels from Kraken, Crypto.com and Hyperliquid open interest, plus real Hyperliquid position liquidation prices and Kraken order-book walls. Market data, not trade signals."}
     new_alerts = []
+    tickers = [tk for _, _, tk in COINS.values()]
+    warn = status["warnings"].append
+    hl_mkt, hl_pos = {}, {}
+    try:
+        hl_mkt = extra.hl_market(tickers)
+        log(f"Hyperliquid market: {sorted(hl_mkt)}")
+    except Exception as e:
+        warn(f"Hyperliquid market: {e}")
+    if hl_mkt:
+        try:
+            hl_pos = extra.hl_positions([t for t in tickers if t in hl_mkt], warn)
+            log("Hyperliquid positions: " + ", ".join(f"{t} {v['count']}" for t, v in hl_pos.items()))
+        except Exception as e:
+            warn(f"Hyperliquid positions: {e}")
     for coin, (kf, cdc, tk) in COINS.items():
         try:
-            doc, tick = update_coin(coin, os.path.join(a.data, "coins", coin + ".json"), a.backfill, status)
+            doc, tick = update_coin(coin, os.path.join(a.data, "coins", coin + ".json"), a.backfill, status,
+                                    hl_mkt.get(tk))
             times, prices = kraken_prices(kf)
             lv = build_levels(doc, times, prices)
             if lv is None:
                 raise RuntimeError("no price candles")
             oi_k = (latest(doc["oi"]) or 0) * lv["price"]
             oi_c = (latest((doc.get("cdc") or {}).get("oi")) or 0) * lv["price"]
-            lv.update({"ticker": tk, "openInterestUSD": round(oi_k + oi_c, 2), "krakenOIUSD": round(oi_k, 2),
-                       "cryptoComOIUSD": round(oi_c, 2), "funding8h": doc.get("fundingNow8h"),
+            hm = hl_mkt.get(tk)
+            oi_h = hm["oi"] * lv["price"] if hm else 0
+            if hm or tk in hl_pos:
+                lv["hyperliquid"] = dict(hl_pos.get(tk) or {}, oiUSD=round(oi_h, 2),
+                                         funding8h=hm["funding8h"] if hm else None)
+            try:
+                bk = extra.kraken_book(tk)
+                if bk:
+                    lv["book"] = bk
+            except Exception as e:
+                warn(f"{tk} Kraken order book: {e}")
+            lv.update({"ticker": tk, "openInterestUSD": round(oi_k + oi_c + oi_h, 2), "krakenOIUSD": round(oi_k, 2),
+                       "cryptoComOIUSD": round(oi_c, 2), "hyperliquidOIUSD": round(oi_h, 2),
+                       "funding8h": doc.get("fundingNow8h"),
                        "liquidated24hUSD": round(sum(doc["liq"][-24:]) * lv["price"], 2),
                        "dataThrough": doc["updatedAt"] + H})
             levels["coins"][coin] = lv
