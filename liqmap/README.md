@@ -33,3 +33,15 @@ BTC, ETH, SOL, XRP, DOGE pooled:
 Takeaway: treat ordinary clusters as context, not signal. Strong clusters carry a small, real-looking
 effect that is smaller than a round-trip taker fee (~0.8%), so it isn't tradeable on its own. One 95-day
 window in a rising market; hourly candles; re-run the workflow periodically to see if it holds.
+
+## Data sources
+
+| Source | What | How |
+|---|---|---|
+| Kraken Futures | open interest, recorded liquidations, funding (main model input) | public analytics + tickers |
+| Crypto.com | open interest (hourly snapshots) | public tickers |
+| Hyperliquid | open interest (hourly snapshots) and the **real liquidation prices** of open positions held by its ~400 largest accounts plus recent traders | public info API (`liqmap/extra.py`) |
+| Kraken spot | order-book walls within ±10% and resting depth within 1% / 2% | public Depth (`liqmap/extra.py`) |
+
+Hyperliquid and order-book data are best-effort: if either fails, the run records a warning in
+`status.json` and the Kraken data still lands. Coins are limited to ones listed on Kraken.
