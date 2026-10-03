@@ -1,0 +1,618 @@
+{
+ "generatedAt": 1791037057,
+ "settings": {
+  "window": 168,
+  "step": 4,
+  "ahead": 24,
+  "react": 6,
+  "distanceRangePct": [
+   0.3,
+   6.0
+  ],
+  "controlsPerEvent": 5
+ },
+ "coins": {
+  "BTC": {
+   "hours": 2287,
+   "from": 1782806400,
+   "to": 1791036000,
+   "events": 1022,
+   "magnet": {
+    "observedHits": 160,
+    "expectedHits": 162.4,
+    "ratio": 0.985,
+    "ci90": [
+     0.806,
+     1.157
+    ],
+    "controlRatio": 1.006,
+    "controlCi90": [
+     0.909,
+     1.099
+    ]
+   },
+   "reaction": {
+    "clusters": {
+     "touched": 160,
+     "meanReversalPct": 0.104,
+     "reversed>=0.5%": 0.463,
+     "ranThrough>=1%": 0.338
+    },
+    "controls": {
+     "touched": 1030,
+     "meanReversalPct": -0.071,
+     "reversed>=0.5%": 0.348,
+     "ranThrough>=1%": 0.389
+    },
+    "reversalEdgePct": 0.175,
+    "reversalEdgeCi90": [
+     -0.066,
+     0.392
+    ]
+   }
+  },
+  "ETH": {
+   "hours": 2287,
+   "from": 1782806400,
+   "to": 1791036000,
+   "events": 1018,
+   "magnet": {
+    "observedHits": 225,
+    "expectedHits": 220.6,
+    "ratio": 1.02,
+    "ci90": [
+     0.863,
+     1.171
+    ],
+    "controlRatio": 0.998,
+    "controlCi90": [
+     0.917,
+     1.078
+    ]
+   },
+   "reaction": {
+    "clusters": {
+     "touched": 225,
+     "meanReversalPct": 0.223,
+     "reversed>=0.5%": 0.524,
+     "ranThrough>=1%": 0.44
+    },
+    "controls": {
+     "touched": 1390,
+     "meanReversalPct": 0.014,
+     "reversed>=0.5%": 0.437,
+     "ranThrough>=1%": 0.458
+    },
+    "reversalEdgePct": 0.209,
+    "reversalEdgeCi90": [
+     -0.002,
+     0.393
+    ]
+   }
+  },
+  "SOL": {
+   "hours": 2287,
+   "from": 1782806400,
+   "to": 1791036000,
+   "events": 984,
+   "magnet": {
+    "observedHits": 261,
+    "expectedHits": 266.7,
+    "ratio": 0.979,
+    "ci90": [
+     0.849,
+     1.122
+    ],
+    "controlRatio": 0.987,
+    "controlCi90": [
+     0.899,
+     1.072
+    ]
+   },
+   "reaction": {
+    "clusters": {
+     "touched": 261,
+     "meanReversalPct": 0.162,
+     "reversed>=0.5%": 0.379,
+     "ranThrough>=1%": 0.556
+    },
+    "controls": {
+     "touched": 1583,
+     "meanReversalPct": 0.144,
+     "reversed>=0.5%": 0.406,
+     "ranThrough>=1%": 0.483
+    },
+    "reversalEdgePct": 0.018,
+    "reversalEdgeCi90": [
+     -0.179,
+     0.213
+    ]
+   }
+  },
+  "XRP": {
+   "hours": 2287,
+   "from": 1782806400,
+   "to": 1791036000,
+   "events": 1009,
+   "magnet": {
+    "observedHits": 276,
+    "expectedHits": 277.0,
+    "ratio": 0.996,
+    "ci90": [
+     0.854,
+     1.136
+    ],
+    "controlRatio": 1.009,
+    "controlCi90": [
+     0.917,
+     1.101
+    ]
+   },
+   "reaction": {
+    "clusters": {
+     "touched": 276,
+     "meanReversalPct": -0.001,
+     "reversed>=0.5%": 0.482,
+     "ranThrough>=1%": 0.536
+    },
+    "controls": {
+     "touched": 1689,
+     "meanReversalPct": -0.117,
+     "reversed>=0.5%": 0.404,
+     "ranThrough>=1%": 0.534
+    },
+    "reversalEdgePct": 0.116,
+    "reversalEdgeCi90": [
+     -0.148,
+     0.365
+    ]
+   }
+  },
+  "BNB": {
+   "hours": 2287,
+   "from": 1782806400,
+   "to": 1791036000,
+   "events": 1026,
+   "magnet": {
+    "observedHits": 113,
+    "expectedHits": 144.2,
+    "ratio": 0.784,
+    "ci90": [
+     0.596,
+     0.981
+    ],
+    "controlRatio": 1.027,
+    "controlCi90": [
+     0.921,
+     1.123
+    ]
+   },
+   "reaction": {
+    "clusters": {
+     "touched": 113,
+     "meanReversalPct": -0.214,
+     "reversed>=0.5%": 0.31,
+     "ranThrough>=1%": 0.496
+    },
+    "controls": {
+     "touched": 1055,
+     "meanReversalPct": -0.083,
+     "reversed>=0.5%": 0.3,
+     "ranThrough>=1%": 0.377
+    },
+    "reversalEdgePct": -0.131,
+    "reversalEdgeCi90": [
+     -0.409,
+     0.116
+    ]
+   }
+  },
+  "DOGE": {
+   "hours": 2287,
+   "from": 1782806400,
+   "to": 1791036000,
+   "events": 1013,
+   "magnet": {
+    "observedHits": 307,
+    "expectedHits": 292.2,
+    "ratio": 1.051,
+    "ci90": [
+     0.912,
+     1.173
+    ],
+    "controlRatio": 1.012,
+    "controlCi90": [
+     0.922,
+     1.097
+    ]
+   },
+   "reaction": {
+    "clusters": {
+     "touched": 307,
+     "meanReversalPct": -0.006,
+     "reversed>=0.5%": 0.495,
+     "ranThrough>=1%": 0.547
+    },
+    "controls": {
+     "touched": 1697,
+     "meanReversalPct": 0.039,
+     "reversed>=0.5%": 0.413,
+     "ranThrough>=1%": 0.535
+    },
+    "reversalEdgePct": -0.046,
+    "reversalEdgeCi90": [
+     -0.245,
+     0.144
+    ]
+   }
+  },
+  "CRO": {
+   "hours": 2287,
+   "from": 1782806400,
+   "to": 1791036000,
+   "events": 969,
+   "magnet": {
+    "observedHits": 273,
+    "expectedHits": 271.7,
+    "ratio": 1.005,
+    "ci90": [
+     0.859,
+     1.139
+    ],
+    "controlRatio": 0.996,
+    "controlCi90": [
+     0.896,
+     1.094
+    ]
+   },
+   "reaction": {
+    "clusters": {
+     "touched": 273,
+     "meanReversalPct": -0.244,
+     "reversed>=0.5%": 0.421,
+     "ranThrough>=1%": 0.571
+    },
+    "controls": {
+     "touched": 1694,
+     "meanReversalPct": -0.472,
+     "reversed>=0.5%": 0.307,
+     "ranThrough>=1%": 0.642
+    },
+    "reversalEdgePct": 0.228,
+    "reversalEdgeCi90": [
+     -0.021,
+     0.474
+    ]
+   }
+  }
+ },
+ "bot": {
+  "BTC": {
+   "base": {
+    "returnPct": 1.75,
+    "trades": 21,
+    "wins": 7,
+    "maxDrawdownPct": 13.09,
+    "skippedBuys": 0
+   },
+   "avoid_long_cluster": {
+    "returnPct": -11.69,
+    "trades": 13,
+    "wins": 2,
+    "maxDrawdownPct": 16.72,
+    "skippedBuys": 9
+   },
+   "need_short_magnet": {
+    "returnPct": -1.45,
+    "trades": 15,
+    "wins": 4,
+    "maxDrawdownPct": 17.12,
+    "skippedBuys": 6
+   },
+   "cluster_stop": {
+    "returnPct": 1.75,
+    "trades": 21,
+    "wins": 7,
+    "maxDrawdownPct": 13.09,
+    "skippedBuys": 0
+   },
+   "holdPct": 34.49
+  },
+  "ETH": {
+   "base": {
+    "returnPct": -18.34,
+    "trades": 29,
+    "wins": 5,
+    "maxDrawdownPct": 28.15,
+    "skippedBuys": 0
+   },
+   "avoid_long_cluster": {
+    "returnPct": -23.61,
+    "trades": 21,
+    "wins": 3,
+    "maxDrawdownPct": 27.92,
+    "skippedBuys": 8
+   },
+   "need_short_magnet": {
+    "returnPct": -6.18,
+    "trades": 20,
+    "wins": 4,
+    "maxDrawdownPct": 24.22,
+    "skippedBuys": 9
+   },
+   "cluster_stop": {
+    "returnPct": -17.15,
+    "trades": 29,
+    "wins": 5,
+    "maxDrawdownPct": 27.11,
+    "skippedBuys": 0
+   },
+   "holdPct": 51.45
+  },
+  "SOL": {
+   "base": {
+    "returnPct": -0.64,
+    "trades": 24,
+    "wins": 7,
+    "maxDrawdownPct": 18.81,
+    "skippedBuys": 0
+   },
+   "avoid_long_cluster": {
+    "returnPct": -7.07,
+    "trades": 15,
+    "wins": 5,
+    "maxDrawdownPct": 18.32,
+    "skippedBuys": 9
+   },
+   "need_short_magnet": {
+    "returnPct": 18.15,
+    "trades": 16,
+    "wins": 7,
+    "maxDrawdownPct": 12.74,
+    "skippedBuys": 8
+   },
+   "cluster_stop": {
+    "returnPct": -0.64,
+    "trades": 24,
+    "wins": 7,
+    "maxDrawdownPct": 18.81,
+    "skippedBuys": 0
+   },
+   "holdPct": 46.82
+  },
+  "XRP": {
+   "base": {
+    "returnPct": -8.3,
+    "trades": 25,
+    "wins": 4,
+    "maxDrawdownPct": 31.11,
+    "skippedBuys": 0
+   },
+   "avoid_long_cluster": {
+    "returnPct": -1.64,
+    "trades": 20,
+    "wins": 3,
+    "maxDrawdownPct": 25.97,
+    "skippedBuys": 5
+   },
+   "need_short_magnet": {
+    "returnPct": -19.96,
+    "trades": 13,
+    "wins": 3,
+    "maxDrawdownPct": 21.76,
+    "skippedBuys": 12
+   },
+   "cluster_stop": {
+    "returnPct": -6.55,
+    "trades": 25,
+    "wins": 4,
+    "maxDrawdownPct": 29.67,
+    "skippedBuys": 0
+   },
+   "holdPct": 31.95
+  },
+  "BNB": {
+   "base": {
+    "returnPct": -11.98,
+    "trades": 25,
+    "wins": 7,
+    "maxDrawdownPct": 14.94,
+    "skippedBuys": 0
+   },
+   "avoid_long_cluster": {
+    "returnPct": -2.02,
+    "trades": 17,
+    "wins": 6,
+    "maxDrawdownPct": 12.19,
+    "skippedBuys": 8
+   },
+   "need_short_magnet": {
+    "returnPct": -9.67,
+    "trades": 22,
+    "wins": 6,
+    "maxDrawdownPct": 13.84,
+    "skippedBuys": 3
+   },
+   "cluster_stop": {
+    "returnPct": -11.98,
+    "trades": 25,
+    "wins": 7,
+    "maxDrawdownPct": 14.94,
+    "skippedBuys": 0
+   },
+   "holdPct": 34.41
+  },
+  "DOGE": {
+   "base": {
+    "returnPct": -16.45,
+    "trades": 26,
+    "wins": 6,
+    "maxDrawdownPct": 25.96,
+    "skippedBuys": 0
+   },
+   "avoid_long_cluster": {
+    "returnPct": -13.9,
+    "trades": 24,
+    "wins": 6,
+    "maxDrawdownPct": 24.6,
+    "skippedBuys": 2
+   },
+   "need_short_magnet": {
+    "returnPct": 5.61,
+    "trades": 16,
+    "wins": 5,
+    "maxDrawdownPct": 18.44,
+    "skippedBuys": 10
+   },
+   "cluster_stop": {
+    "returnPct": -16.45,
+    "trades": 26,
+    "wins": 6,
+    "maxDrawdownPct": 25.96,
+    "skippedBuys": 0
+   },
+   "holdPct": 23.94
+  },
+  "CRO": {
+   "base": {
+    "returnPct": -28.68,
+    "trades": 22,
+    "wins": 5,
+    "maxDrawdownPct": 40.62,
+    "skippedBuys": 0
+   },
+   "avoid_long_cluster": {
+    "returnPct": -32.71,
+    "trades": 16,
+    "wins": 4,
+    "maxDrawdownPct": 40.1,
+    "skippedBuys": 6
+   },
+   "need_short_magnet": {
+    "returnPct": -18.58,
+    "trades": 16,
+    "wins": 3,
+    "maxDrawdownPct": 30.9,
+    "skippedBuys": 6
+   },
+   "cluster_stop": {
+    "returnPct": -28.78,
+    "trades": 22,
+    "wins": 5,
+    "maxDrawdownPct": 40.7,
+    "skippedBuys": 0
+   },
+   "holdPct": 12.1
+  }
+ },
+ "pooled": {
+  "main": {
+   "events": 5046,
+   "magnet": {
+    "observedHits": 1229,
+    "expectedHits": 1218.9,
+    "ratio": 1.008,
+    "ci90": [
+     0.897,
+     1.12
+    ],
+    "controlRatio": 1.003,
+    "controlCi90": [
+     0.924,
+     1.077
+    ]
+   },
+   "reaction": {
+    "clusters": {
+     "touched": 1229,
+     "meanReversalPct": 0.087,
+     "reversed>=0.5%": 0.469,
+     "ranThrough>=1%": 0.5
+    },
+    "controls": {
+     "touched": 7389,
+     "meanReversalPct": 0.006,
+     "reversed>=0.5%": 0.405,
+     "ranThrough>=1%": 0.489
+    },
+    "reversalEdgePct": 0.081,
+    "reversalEdgeCi90": [
+     -0.029,
+     0.184
+    ]
+   }
+  },
+  "main_strong": {
+   "events": 2392,
+   "magnet": {
+    "observedHits": 628,
+    "expectedHits": 525.4,
+    "ratio": 1.195,
+    "ci90": [
+     1.068,
+     1.318
+    ],
+    "controlRatio": 1.003,
+    "controlCi90": [
+     0.924,
+     1.077
+    ]
+   },
+   "reaction": {
+    "clusters": {
+     "touched": 628,
+     "meanReversalPct": 0.166,
+     "reversed>=0.5%": 0.476,
+     "ranThrough>=1%": 0.479
+    },
+    "controls": {
+     "touched": 7389,
+     "meanReversalPct": 0.006,
+     "reversed>=0.5%": 0.405,
+     "ranThrough>=1%": 0.489
+    },
+    "reversalEdgePct": 0.16,
+    "reversalEdgeCi90": [
+     -0.019,
+     0.323
+    ]
+   }
+  },
+  "strong_vs_same_moment": {
+   "events": 2392,
+   "magnet": {
+    "observedHits": 628,
+    "expectedHits": 525.4,
+    "ratio": 1.195,
+    "ci90": [
+     1.068,
+     1.318
+    ],
+    "controlRatio": 1.096,
+    "controlCi90": [
+     1.01,
+     1.179
+    ]
+   },
+   "reaction": {
+    "clusters": {
+     "touched": 628,
+     "meanReversalPct": 0.166,
+     "reversed>=0.5%": 0.476,
+     "ranThrough>=1%": 0.479
+    },
+    "controls": {
+     "touched": 3448,
+     "meanReversalPct": -0.043,
+     "reversed>=0.5%": 0.399,
+     "ranThrough>=1%": 0.496
+    },
+    "reversalEdgePct": 0.209,
+    "reversalEdgeCi90": [
+     0.071,
+     0.335
+    ]
+   }
+  }
+ }
+}
