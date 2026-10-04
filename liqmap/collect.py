@@ -286,14 +286,17 @@ def build_levels(doc, times, prices):
     pmin, pmax = lo * 0.9, hi * 1.1
     step = (pmax - pmin) / BINS
     add, close, real = [0.0] * n, [0.0] * n, [0] * n
+    base = [0.0] * n   # total open interest (USD) before each step, for proportional closes
     # other exchanges' OI changes count only once their history covers the whole window;
     # otherwise a big exchange with a few hours of history would swamp the Kraken history
     ext_keys = [k for k in ("cdc", "hl") if series_at(doc.get(k), times[0]) is not None]
     rsum = rn = 0
     for i in range(1, n):
         o0, o1 = oi_at(doc, times[i - 1]), oi_at(doc, times[i])
-        ext = [(series_at(doc.get(k), times[i - 1]), series_at(doc.get(k), times[i])) for k in ext_keys]
-        ext = [b - a0 for a0, b in ext if a0 is not None and b is not None]
+        pairs = [(series_at(doc.get(k), times[i - 1]), series_at(doc.get(k), times[i])) for k in ext_keys]
+        pairs = [(a0, b) for a0, b in pairs if a0 is not None and b is not None]
+        ext = [b - a0 for a0, b in pairs]
+        base[i] = ((o0 or 0) + sum(a0 for a0, _ in pairs)) * prices[i - 1]
         if (o0 is not None and o1 is not None) or ext:
             d = (((o1 - o0) if o0 is not None and o1 is not None else 0) + sum(ext)) * prices[i]
             real[i] = 1
@@ -317,7 +320,8 @@ def build_levels(doc, times, prices):
             longs = [l for l in longs if l[0] < low]
             shorts = [s for s in shorts if s[0] > high]
         if close[i] > 0:
-            tot = sum(l[1] for l in longs) + sum(s[1] for s in shorts)
+            # an OI drop closes that share of ALL open positions, not only the ones mapped here
+            tot = base[i] or (sum(l[1] for l in longs) + sum(s[1] for s in shorts))
             if tot > 0:
                 f = max(0.0, 1 - close[i] / tot)
                 longs = [[a, b * f] for a, b in longs]
