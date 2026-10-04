@@ -286,10 +286,13 @@ def build_levels(doc, times, prices):
     pmin, pmax = lo * 0.9, hi * 1.1
     step = (pmax - pmin) / BINS
     add, close, real = [0.0] * n, [0.0] * n, [0] * n
+    # other exchanges' OI changes count only once their history covers the whole window;
+    # otherwise a big exchange with a few hours of history would swamp the Kraken history
+    ext_keys = [k for k in ("cdc", "hl") if series_at(doc.get(k), times[0]) is not None]
     rsum = rn = 0
     for i in range(1, n):
         o0, o1 = oi_at(doc, times[i - 1]), oi_at(doc, times[i])
-        ext = [(series_at(doc.get(k), times[i - 1]), series_at(doc.get(k), times[i])) for k in ("cdc", "hl")]
+        ext = [(series_at(doc.get(k), times[i - 1]), series_at(doc.get(k), times[i])) for k in ext_keys]
         ext = [b - a0 for a0, b in ext if a0 is not None and b is not None]
         if (o0 is not None and o1 is not None) or ext:
             d = (((o1 - o0) if o0 is not None and o1 is not None else 0) + sum(ext)) * prices[i]
