@@ -1,0 +1,845 @@
+<title>Liquidation Heat Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo:wght@400;600;800&family=Chivo+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: control strip → heat map (time × price) with price axis → liquidation profile + cluster readouts */
+:root{
+  --bg:#f3f4f7; --surface:#ffffff; --fg:#151a2b; --muted:#5b6380; --line:#d9dce6;
+  --accent:#3b4fd6; --long:#d2405a; --short:#1f9a8a;
+  --plot:#0c1022; --plot-line:#ffffff; --plot-grid:rgba(255,255,255,.07); --plot-text:#aab1cf;
+  --display:"Chivo",ui-sans-serif,system-ui,sans-serif;
+  --body:"Chivo",ui-sans-serif,system-ui,sans-serif;
+  --mono:"Chivo Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0a0d19; --surface:#121729; --fg:#e7e9f3; --muted:#8e96b6; --line:#252c45;
+  --accent:#8b9bff; --long:#ff6b84; --short:#3fd3bd;
+  --plot:#060914; --plot-grid:rgba(255,255,255,.06); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0a0d19; --surface:#121729; --fg:#e7e9f3; --muted:#8e96b6; --line:#252c45;
+  --accent:#8b9bff; --long:#ff6b84; --short:#3fd3bd;
+  --plot:#060914; --plot-grid:rgba(255,255,255,.06); color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:14px;line-height:1.45}
+.wrap{max-width:1180px;margin:0 auto;padding-inline:16px;padding-block:20px 32px;display:grid;gap:14px}
+header{display:flex;flex-wrap:wrap;align-items:end;justify-content:space-between;gap:12px}
+h1{font-family:var(--display);font-weight:800;font-size:clamp(20px,3.2vw,28px);letter-spacing:-.01em;margin:0;text-wrap:balance}
+.sub{color:var(--muted);margin:2px 0 0;font-size:13px}
+.hdrR{display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:flex-end}
+.pfs{all:unset;box-sizing:border-box;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;background:var(--accent);color:var(--surface);font-weight:600;font-size:13.5px}
+.pfs span{font-size:16px;line-height:1}
+.pfs.alt{background:transparent;color:var(--accent);box-shadow:inset 0 0 0 1.5px var(--accent);text-decoration:none}.pfs:hover{filter:brightness(1.1)}.pfs:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
+html:fullscreen body{overflow:auto}
+.price{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right}
+.price b{font-size:22px;font-weight:500;display:block}
+.price span{color:var(--muted);font-size:12px}
+.controls{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center}
+.seg{display:inline-flex;flex-wrap:wrap;max-width:100%;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface)}
+.seg button{all:unset;cursor:pointer;padding:6px 11px;font-family:var(--mono);font-size:12.5px;color:var(--muted)}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--surface)}
+.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.lbl{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-right:6px}
+.status{font-size:12px;color:var(--muted);font-family:var(--mono)}
+.status.warn{color:var(--long)}
+.livedot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--short);margin-right:5px;vertical-align:1px}
+.livedot.off{background:var(--muted)}
+@media (prefers-reduced-motion:no-preference){.livedot.pulse{animation:lp 1.2s ease-out 1}}
+@keyframes lp{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--short) 70%,transparent)}100%{box-shadow:0 0 0 7px transparent}}
+td .lv{color:var(--short);font-size:10.5px;margin-left:4px}
+.main{--chartH:clamp(320px,58vh,560px);--sideW:230px;display:grid;grid-template-columns:minmax(0,1fr) 14px var(--sideW);gap:0}
+.chartcol{display:grid;gap:0;align-content:start;min-width:0}
+.chartcol .replay{margin-top:4px}
+@media (max-width:760px){.main{grid-template-columns:1fr;gap:14px}.hgrip{display:none!important}}
+/* resize handles */
+.vgrip,.hgrip{display:flex;align-items:center;justify-content:center;touch-action:none;user-select:none;-webkit-user-select:none;color:var(--muted)}
+.vgrip{height:18px;cursor:ns-resize;gap:8px;font-size:10.5px;font-family:var(--mono)}
+.vgrip span{opacity:.75}
+.hgrip{cursor:ew-resize}
+.vgrip i,.hgrip i{display:block;border-radius:3px;background:var(--line);transition:background .15s}
+.vgrip i{width:44px;height:4px}.hgrip i{width:4px;height:44px}
+.vgrip:hover i,.hgrip:hover i,.vgrip:focus-visible i,.hgrip:focus-visible i,.dragging i{background:var(--accent)}
+.vgrip:focus-visible,.hgrip:focus-visible{outline:none}
+body.resizing,body.resizing *{cursor:inherit!important;user-select:none!important}
+.sizebar{position:absolute;top:8px;right:72px;z-index:3;display:flex;gap:4px}
+.fsbtn{all:unset;box-sizing:border-box;cursor:pointer;min-width:26px;text-align:center;font-family:var(--mono);font-size:11.5px;color:var(--plot-text);background:rgba(6,9,20,.6);border:1px solid rgba(255,255,255,.18);border-radius:6px;padding:3px 8px}
+.fsbtn:hover{color:#fff;border-color:rgba(255,255,255,.4)}.fsbtn:disabled{opacity:.35;cursor:default}
+.fsbtn.big{font-size:14px;line-height:1;padding:2px 8px}.fsbtn:focus-visible{outline:2px solid var(--accent)}
+/* expanded: the chart and side panel fill the window */
+.main.expanded{position:fixed;inset:0;z-index:50;background:var(--bg);padding:12px 16px;align-content:stretch}
+.main.expanded .vgrip{display:none}
+body.has-expanded{overflow:hidden}
+.plotbox{position:relative;background:var(--plot);border-radius:10px;overflow:hidden;min-width:0}
+#heat{display:block;width:100%;height:var(--chartH);touch-action:none}
+.main.expanded #heat{height:calc(100vh - 92px)}
+.tip{position:absolute;pointer-events:none;background:rgba(6,9,20,.92);color:#e7e9f3;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 8px;font-family:var(--mono);font-size:11.5px;line-height:1.4;white-space:nowrap}
+.legend{position:absolute;left:12px;bottom:10px;display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10.5px;color:var(--plot-text)}
+.legend i{display:block;width:110px;height:6px;border-radius:3px}
+.side{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px;display:grid;gap:12px;align-content:start;min-width:0}
+.side h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0;font-weight:600}
+#profile{width:100%;height:clamp(200px,calc(var(--chartH) - 300px),1200px);display:block}
+.main.expanded #profile{height:calc(100vh - 420px);min-height:200px}
+.main.expanded .side{overflow:auto;max-height:calc(100vh - 24px)}
+.cl{display:grid;gap:8px}
+.cl div{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:12.5px}
+.cl dt{grid-column:1/-1;font-family:var(--body);font-size:11px;letter-spacing:.06em;text-transform:uppercase}
+.cl .l dt{color:var(--long)} .cl .s dt{color:var(--short)}
+.cl dd{margin:0}
+.cl .dist{color:var(--muted);text-align:right}
+.note{color:var(--muted);font-size:12px;max-width:80ch;margin:0}
+.tiers{display:flex;flex-wrap:wrap;gap:6px}
+.tiers label{display:inline-flex;gap:5px;align-items:center;font-family:var(--mono);font-size:12px;border:1px solid var(--line);border-radius:999px;padding:3px 9px;cursor:pointer;background:var(--surface)}
+.tiers input{accent-color:var(--accent);margin:0}
+.badge{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11.5px;padding:3px 9px;border-radius:999px;border:1px solid var(--line);color:var(--muted);background:var(--surface)}
+.badge i{width:7px;height:7px;border-radius:50%;background:var(--muted)}
+.badge.real{color:var(--fg)} .badge.real i{background:var(--short)}
+.stats{display:grid;grid-template-columns:1fr;gap:10px}
+.stat{display:grid;gap:1px;min-width:0}
+.stat span{white-space:nowrap;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.stat b{font-family:var(--mono);font-weight:500;font-size:15px;font-variant-numeric:tabular-nums}
+.stat em{font-style:normal;font-family:var(--mono);font-size:11px;color:var(--muted)}
+.legend .dot{width:9px;height:9px;border-radius:50%;border:1.5px solid #fff;background:rgba(255,255,255,.15);margin-left:10px}
+.ibtn{all:unset;cursor:pointer;display:inline-grid;place-items:center;width:15px;height:15px;border-radius:50%;border:1px solid var(--line);color:var(--muted);font:600 10px/1 var(--body);margin-left:5px;vertical-align:1px;text-transform:none;letter-spacing:0}
+.ibtn:hover,.ibtn[aria-expanded="true"]{color:var(--accent);border-color:var(--accent)}
+.ibtn:focus-visible,.gbtn:focus-visible,.pin button:focus-visible,.pop button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.gbtn{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;padding:6px 11px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--fg)}
+.gbtn:hover{border-color:var(--accent);color:var(--accent)}
+.gbtn.primary{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.gbtn.primary:hover{color:var(--surface);filter:brightness(1.08)}
+.readout{margin:0;padding:10px 14px;border-radius:10px;background:var(--surface);border:1px solid var(--line);font-size:14px;line-height:1.5;max-width:none}
+.readout b{font-family:var(--mono);font-weight:500;font-variant-numeric:tabular-nums}
+.readout .up{color:var(--short)} .readout .dn{color:var(--long)}
+.hintbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;font-size:13px;color:var(--muted)}
+.hintbar .x{all:unset;cursor:pointer;color:var(--muted);font-size:16px;line-height:1;padding:2px 4px}
+.pop{position:fixed;z-index:30;max-width:300px;background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:12px 14px;box-shadow:0 10px 30px rgba(10,13,30,.22);font-size:13px;line-height:1.5}
+.pop h3{margin:0 0 4px;font-size:13.5px;font-weight:800}
+.pop p{margin:0}
+.pop .row{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:10px}
+.pop .step{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.tour-hl{outline:2px solid var(--accent)!important;outline-offset:3px;border-radius:10px;position:relative;z-index:20}
+.pin{position:absolute;top:10px;right:74px;max-width:250px;background:rgba(6,9,20,.94);color:#e7e9f3;border:1px solid rgba(139,155,255,.55);border-radius:8px;padding:9px 11px;font-size:12.5px;line-height:1.45}
+.pin b{font-family:var(--mono);font-weight:500}
+.pin .t{font-family:var(--mono);font-size:11px;color:#aab1cf;margin-bottom:2px}
+.pin button{all:unset;cursor:pointer;font-size:11.5px;color:#aab1cf;text-decoration:underline;margin-top:6px;display:inline-block}
+.legend .try{margin-left:12px;color:#c9cff0}
+#heat{cursor:crosshair}
+#heat:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+#profile{cursor:pointer}
+.proftip{font-family:var(--mono);font-size:11.5px;color:var(--muted);min-height:1.4em;margin-top:-6px}
+.xleg{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center;font-size:11.5px;color:var(--muted);margin-top:-4px}
+.xleg span{display:inline-flex;align-items:center;gap:5px}
+.xleg .dia{width:8px;height:8px;transform:rotate(45deg);border:1.5px solid var(--fg);background:transparent}
+.xleg .wall{width:14px;height:7px;border:1.5px solid var(--muted);border-radius:1px}
+.guide{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;display:grid;gap:14px}
+.guide h2{margin:0;font-size:16px;font-weight:800}
+.ghead{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.keys{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.key{display:grid;grid-template-columns:34px 1fr;gap:10px;align-items:start;font-size:13px;line-height:1.45}
+.key svg{width:34px;height:22px;border-radius:4px;background:var(--plot)}
+.key b{display:block;font-size:13px}
+.gloss{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px 16px;margin:0}
+.gloss div{min-width:0} .gloss dt{font-weight:700;font-size:13px} .gloss dd{margin:2px 0 0;color:var(--muted);font-size:12.5px;line-height:1.45}
+.overview{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px;display:grid;gap:8px;min-width:0}
+.ovhead{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
+.ovhead h2{margin:0;font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+.ovhead .grow{flex:1}
+.tblwrap{overflow-x:auto;min-width:0}
+table.ov{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+table.ov th{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;text-align:right;padding:4px 8px;white-space:nowrap;border-bottom:1px solid var(--line)}
+table.ov th:first-child,table.ov td:first-child{text-align:left}
+table.ov td{padding:6px 8px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:12.5px}
+table.ov tr:last-child td{border-bottom:0}
+table.ov tbody tr{cursor:pointer}
+table.ov tbody tr:hover td{background:color-mix(in srgb,var(--accent) 7%,transparent)}
+table.ov tr.sel td{background:color-mix(in srgb,var(--accent) 12%,transparent)}
+table.ov td button{all:unset;cursor:pointer;font-family:var(--body);font-weight:700;font-size:13px}
+table.ov td button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+table.ov .up{color:var(--short)} table.ov .dn{color:var(--long)} table.ov .mut{color:var(--muted)}
+.chip{display:inline-block;font-family:var(--body);font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px;margin-left:6px}
+.chip.near{background:color-mix(in srgb,#e8a33d 22%,transparent);color:#b06d08}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .chip.near{color:#f2bd63}}
+:root[data-theme="dark"] .chip.near{color:#f2bd63}
+.alertsline{margin:0;font-size:12.5px;color:var(--muted)}
+.alertsline b{color:var(--fg);font-weight:600}
+.chartcol{display:grid;gap:0;min-width:0;align-content:start}
+.replay{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:8px 12px}
+.replay input[type=range]{flex:1;min-width:140px;accent-color:var(--accent)}
+.replay .rl{font-family:var(--mono);font-size:12px;color:var(--muted);min-width:110px}
+.replay .lbl{margin:0}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Liquidation Heat Map</h1>
+      <p class="sub">Where leveraged positions would be force-closed, built from Kraken, Crypto.com and Hyperliquid data</p>
+    </div>
+    <div class="hdrR"><a class="pfs alt" id="newTab" href="https://claude.ai/artifact/CWhVwL6DbiHhoRbDqo7cJL" target="_blank" rel="noopener" title="Open the heat map in its own browser tab, outside the Claude window"><span aria-hidden="true">↗</span> Open in new tab</a><button class="pfs" id="pageFs" type="button" aria-pressed="false" title="Full screen (F)"><span aria-hidden="true">⤢</span> Full screen</button>
+    <div class="price"><b id="px">—</b><span id="chg">loading…</span><span class="status" id="lstatus" style="display:block"></span></div></div>
+  </header>
+
+  <div class="controls">
+    <div><span class="lbl">Coin</span><div class="seg" id="coins" role="group" aria-label="Coin"></div></div>
+    <div><span class="lbl">Range</span><div class="seg" id="ranges" role="group" aria-label="Range"></div></div>
+    <div><span class="lbl">Leverage<button class="ibtn" type="button" data-info="lev" aria-label="What is leverage?" aria-expanded="false">i</button></span><div class="tiers" id="tiers" aria-label="Leverage tiers" style="display:inline-flex"></div></div>
+    <span class="badge" id="mode"><i></i><span id="modeTxt">Estimate</span></span>
+    <span class="status" id="status"></span>
+    <span style="flex:1"></span>
+    <button class="gbtn" id="guideBtn" type="button" aria-expanded="false" aria-controls="guide">How to read this</button>
+    <button class="gbtn" id="tourBtn" type="button">Take the tour</button>
+  </div>
+
+  <section class="guide" id="guide" hidden aria-label="How to read this chart">
+    <div class="ghead"><h2>How to read this chart</h2><button class="gbtn" id="guideClose" type="button">Close</button></div>
+    <div class="keys">
+      <div class="key"><svg viewBox="0 0 34 22" aria-hidden="true"><rect x="0" y="6" width="34" height="3" fill="#7832aa"/><rect x="0" y="13" width="34" height="3" fill="#fae6a0"/></svg><div><b>Bright bands</b>Prices where many leveraged positions would be force-closed. Brighter means more money at stake.</div></div>
+      <div class="key"><svg viewBox="0 0 34 22" aria-hidden="true"><path d="M1 16 L9 9 L17 13 L25 5 L33 8" stroke="#fff" stroke-width="1.6" fill="none"/></svg><div><b>White line</b>The coin's price over the selected range.</div></div>
+      <div class="key"><svg viewBox="0 0 34 22" aria-hidden="true"><circle cx="11" cy="11" r="4" fill="rgba(255,255,255,.15)" stroke="#fff" stroke-width="1.3"/><circle cx="24" cy="11" r="7" fill="rgba(255,255,255,.15)" stroke="#fff" stroke-width="1.3"/></svg><div><b>White circles</b>Liquidations Kraken actually recorded that hour. Bigger circle, bigger dollar amount.</div></div>
+      <div class="key"><svg viewBox="0 0 34 22" aria-hidden="true"><path d="M0 11 H34" stroke="#fff" stroke-opacity=".5" stroke-dasharray="3 3"/></svg><div><b>Dashed line</b>Today's price, carried across so you can compare it with every band.</div></div>
+      <div class="key"><svg viewBox="0 0 34 22" aria-hidden="true"><rect x="2" y="4" width="22" height="5" fill="#3fd3bd"/><rect x="2" y="13" width="30" height="5" fill="#ff6b84"/></svg><div><b>Side bars</b>Teal: shorts that get liquidated if price rises. Red: longs that get liquidated if price falls.</div></div>
+      <div class="key"><svg viewBox="0 0 34 22" aria-hidden="true"><path d="M0 11 H34" stroke="#8b9bff" stroke-width="1.6" stroke-dasharray="5 3"/></svg><div><b>Click to test a price</b>Click or tap the chart. You'll see how much would be liquidated if price moved there.</div></div>
+    </div>
+    <dl class="gloss">
+      <div><dt>Liquidation</dt><dd>When a leveraged trader's losses eat their collateral, the exchange closes the position for them. That forced buying or selling can push price further.</dd></div>
+      <div><dt>Open interest</dt><dd>The total value of futures positions still open. More open interest means more positions that could be liquidated.</dd></div>
+      <div><dt>Leverage (10×, 100×)</dt><dd>Borrowing to make a position bigger. At 10× a move of about 10% against you wipes the position out; at 100×, about 1%.</dd></div>
+      <div><dt>Funding</dt><dd>A fee perpetual futures traders pay each other. Positive means longs pay shorts (more longs open); the map uses it to tilt its long/short estimate.</dd></div>
+      <div><dt>Long / short</dt><dd>Longs profit when price rises and are liquidated below the price. Shorts profit when price falls and are liquidated above it.</dd></div>
+    </dl>
+    <p class="note">This is a model. Open interest, funding and recorded liquidations are real exchange data, collected hourly from Kraken and Crypto.com. Which side each position is on and how much leverage it uses are estimates (funding tilts the side split). It describes the market; it is not a trading signal or financial advice.</p>
+  </section>
+
+  <section class="overview" id="overview" aria-label="All coins">
+    <div class="ovhead"><h2>All coins<button class="ibtn" type="button" data-info="overview" aria-label="About this table" aria-expanded="false">i</button></h2><span class="status" id="dstatus">Loading exchange data…</span><span class="grow"></span><button class="gbtn" id="dlBtn" type="button" hidden>Download levels (JSON)</button></div>
+    <div class="tblwrap"><table class="ov" id="ovTable"><thead><tr><th scope="col">Coin</th><th scope="col">Price</th><th scope="col">Biggest shorts above</th><th scope="col">Biggest longs below</th><th scope="col">Open interest</th><th scope="col">Funding 8h</th></tr></thead><tbody><tr><td colspan="6" class="mut">Waiting for the hourly exchange data…</td></tr></tbody></table></div>
+    <p class="alertsline" id="alertsLine"></p>
+  </section>
+
+  <div class="hintbar" id="hintbar" hidden><span>New here? A 30-second tour shows how to read the chart.</span><button class="gbtn primary" id="hintTour" type="button">Start tour</button><button class="x" id="hintX" type="button" aria-label="Dismiss">×</button></div>
+
+  <p class="readout" id="readout" aria-live="polite">Loading the latest picture…</p>
+
+  <div class="main">
+    <div class="chartcol">
+    <div class="plotbox">
+      <canvas id="heat" tabindex="0" aria-label="Liquidation heat map. Click or press Enter to test a price; arrow keys move the test price."></canvas>
+      <div class="tip" id="tip" hidden></div>
+      <div class="pin" id="pin" hidden role="status"></div>
+      <div class="sizebar" role="group" aria-label="Chart size">
+        <button class="fsbtn big" id="szDown" type="button" aria-label="Make the chart smaller" title="Smaller">−</button>
+        <button class="fsbtn big" id="szUp" type="button" aria-label="Make the chart bigger" title="Bigger">+</button>
+        <button class="fsbtn" id="fsBtn" type="button" aria-pressed="false" title="Full screen (Esc to exit)">⤢ Full screen</button>
+      </div>
+      <div class="legend">low<i id="ramp"></i>high<span class="dot" id="dotKey"></span><span id="dotLbl">actual liquidations</span><span class="try">· click to test a price</span></div>
+    </div>
+    <div class="vgrip" id="vgrip" role="separator" aria-orientation="horizontal" aria-label="Drag to change chart height" tabindex="0" title="Drag to resize · double-click to reset"><span>drag</span><i></i><span>resize</span></div>
+    <div class="replay" id="replay">
+      <span class="lbl">Replay<button class="ibtn" type="button" data-info="replay" aria-label="About replay" aria-expanded="false">i</button></span>
+      <button class="gbtn" id="playBtn" type="button" aria-label="Play replay">▶ Play</button>
+      <input type="range" id="replayRange" min="0" max="1" value="1" aria-label="Replay time">
+      <span class="rl" id="replayLbl">Live</span>
+      <button class="gbtn" id="liveBtn" type="button" hidden>Back to live</button>
+    </div>
+    </div>
+    <div class="hgrip" id="hgrip" role="separator" aria-orientation="vertical" aria-label="Drag to change side panel width" tabindex="0" title="Drag to resize · double-click to reset"><i></i></div>
+    <aside class="side">
+      <div class="stats">
+        <div class="stat"><span>Open interest<button class="ibtn" type="button" data-info="oi" aria-label="What is open interest?" aria-expanded="false">i</button></span><b id="oiV">—</b><em id="oiC"></em></div>
+        <div class="stat"><span>Funding (8h)<button class="ibtn" type="button" data-info="fund" aria-label="What is funding?" aria-expanded="false">i</button></span><b id="fdV">—</b><em id="fdC"></em></div>
+        <div class="stat"><span>Liquidated 24h<button class="ibtn" type="button" data-info="liq" aria-label="What does liquidated 24h mean?" aria-expanded="false">i</button></span><b id="lqV">—</b><em id="lqC">Kraken perp</em></div>
+      </div>
+      <h2 id="levelsTitle">Open liquidation levels now<button class="ibtn" type="button" data-info="levels" aria-label="About these levels" aria-expanded="false">i</button></h2>
+      <canvas id="profile" aria-label="Estimated liquidations by price right now. Click a bar to test that price."></canvas>
+      <div class="proftip" id="proftip">Hover or tap a bar for details</div>
+      <div class="xleg" id="xleg" hidden><span id="xlegHl"><i class="dia"></i>real Hyperliquid positions</span><span id="xlegBk"><i class="wall"></i>Kraken order walls</span><button class="ibtn" type="button" data-info="real" aria-label="About real positions and order walls" aria-expanded="false">i</button></div>
+      <dl class="cl">
+        <div class="s"><dt>Largest short cluster (above)<button class="ibtn" type="button" data-info="cluster" aria-label="What is a cluster?" aria-expanded="false">i</button></dt><dd id="sP">—</dd><dd class="dist" id="sD"></dd></div>
+        <div class="l"><dt>Largest long cluster (below)</dt><dd id="lP">—</dd><dd class="dist" id="lD"></dd></div>
+      </dl>
+    </aside>
+  </div>
+
+  <p class="note" id="note">When Kraken data is loaded, each hour's rise in open interest on the Kraken perpetual is placed as new positions at that hour's price, split between longs and shorts using the funding rate (50/50 when funding is neutral) across the selected leverage tiers (0.5% maintenance margin). Open interest is Kraken's perpetuals plus Crypto.com's (hourly snapshots from Oct 3; BNB is Kraken only). Between hourly updates, the latest price and Crypto.com open interest come live from Crypto.com every 30 seconds, so the price line, distances and "near" flags stay current. Falling open interest closes positions proportionally, and a level is cleared once price trades through it. The last 30 days use hourly data; older history on the 90d view uses 4-hour data. White circles are liquidations Kraken actually recorded, sized by dollar volume. Long/short split and leverage are assumptions; open interest and liquidations are real. Not financial advice.</p>
+</div>
+<script>
+const COINS=[["bitcoin","BTC"],["ethereum","ETH"],["solana","SOL"],["ripple","XRP"],["binancecoin","BNB"],["dogecoin","DOGE"],["crypto-com-chain","CRO"],["pump-fun","PUMP"]];
+// Crypto.com perpetuals for the live layer (BNB has no Crypto.com market)
+const CDC={bitcoin:"BTCUSD-PERP",ethereum:"ETHUSD-PERP",solana:"SOLUSD-PERP",ripple:"XRPUSD-PERP",dogecoin:"DOGEUSD-PERP","crypto-com-chain":"CROUSD-PERP","pump-fun":"PUMPUSD-PERP",binancecoin:null};
+const CDC_SERVER="Crypto.com",CDC_TOOL="get_ticker",LIVE_MAX_AGE=5*60e3;
+const live={},liveErr={};let cdcHourly=null;let liveUnsubs=[],baseData=null;
+const RANGES=[["1","24h"],["7","7d"],["30","30d"],["90","90d"]];
+const TIERS=[{L:10,w:.30},{L:25,w:.30},{L:50,w:.25},{L:100,w:.15}];
+const MM=0.005, BINS=170;
+let state={coin:"bitcoin",days:"7",tiers:new Set([10,25,50,100])};
+try{const s=JSON.parse(localStorage.getItem("liqhm")||"{}");if(s.coin)state.coin=s.coin;if(s.days)state.days=s.days;}catch(e){}
+let replayI=null, playT=null, ovDoc=null, stDoc=null, dl=null, oiUSD=null, data=null, model=null, unsub=null, mcp=null, db=null, isSample=false, pinP=null;
+const kraken={}; let dbUnsub=null;
+
+const $=id=>document.getElementById(id);
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+const STOPS=[[0,[20,24,70,0]],[.12,[45,40,140,.75]],[.35,[120,50,170,.95]],[.6,[230,90,90,1]],[.82,[250,175,60,1]],[1,[255,250,200,1]]];
+function ramp(t){t=Math.max(0,Math.min(1,t));for(let i=1;i<STOPS.length;i++){if(t<=STOPS[i][0]){const[a,ca]=STOPS[i-1],[b,cb]=STOPS[i];const k=(t-a)/(b-a);return ca.map((v,j)=>v+(cb[j]-v)*k);}}return STOPS[STOPS.length-1][1];}
+$("ramp").style.background="linear-gradient(90deg,"+[0,.12,.35,.6,.82,1].map(t=>{const c=ramp(t);return`rgba(${c[0]|0},${c[1]|0},${c[2]|0},${Math.max(c[3],.25)}) ${t*100}%`}).join(",")+")";
+
+function save(){try{localStorage.setItem("liqhm",JSON.stringify({coin:state.coin,days:state.days}))}catch(e){}}
+function seg(el,items,key){el.innerHTML="";for(const[v,l]of items){const b=document.createElement("button");b.type="button";b.textContent=l;b.id=`${key}-${v}`;b.setAttribute("aria-pressed",state[key]===v);b.onclick=()=>{if(key==="coin"){selectCoin(v);return;}state[key]=v;save();seg(el,items,key);stopPlay();replayI=null;load();};el.appendChild(b);}}
+seg($("coins"),COINS,"coin");seg($("ranges"),RANGES,"days");
+function selectCoin(v){if(state.coin===v)return;state.coin=v;save();seg($("coins"),COINS,"coin");pinP=null;$("pin").hidden=true;stopPlay();replayI=null;watchKraken();load();renderOverview();renderLive();}
+for(const t of TIERS){const lab=document.createElement("label");const cb=document.createElement("input");cb.type="checkbox";cb.id="tier-"+t.L;cb.checked=state.tiers.has(t.L);cb.onchange=()=>{cb.checked?state.tiers.add(t.L):state.tiers.delete(t.L);if(data){build();draw();}};lab.append(cb,t.L+"×");$("tiers").appendChild(lab);}
+
+function fmt(p){if(p>=1000)return"$"+p.toLocaleString("en-US",{maximumFractionDigits:0});if(p>=1)return"$"+p.toFixed(2);return"$"+p.toPrecision(4);}
+function usd(v){const a=Math.abs(v);if(a>=1e9)return"$"+(v/1e9).toFixed(2)+"B";if(a>=1e6)return"$"+(v/1e6).toFixed(1)+"M";if(a>=1e3)return"$"+(v/1e3).toFixed(0)+"K";return"$"+v.toFixed(0);}
+function setStatus(t,warn){$("status").textContent=t;$("status").className="status"+(warn?" warn":"");}
+
+// ---------- Kraken series helpers ----------
+function kr(){const k=kraken[state.coin];return k&&Array.isArray(k.oi)&&k.oi.length?k:null;}
+// live-only extras from the hourly overview: real Hyperliquid positions and Kraken order walls
+function extras(){const c=ovDoc&&ovDoc.coins&&ovDoc.coins[state.coin];if(!c)return{};
+  return{hl:c.hyperliquid&&Array.isArray(c.hyperliquid.positions)&&c.hyperliquid.positions.length?c.hyperliquid:null,
+    book:c.book&&((c.book.bids||[]).length||(c.book.asks||[]).length)?c.book:null};}
+// Crypto.com open interest: GitHub's hourly snapshots, extended with the Claude task's hourly backup points
+function cdcOf(k,coin){const base=k&&k.cdc&&Array.isArray(k.cdc.oi)?k.cdc:null;
+  const pts=cdcHourly&&cdcHourly.coins&&Array.isArray(cdcHourly.coins[coin])?cdcHourly.coins[coin]:[];
+  if(!pts.length)return base;const H=3600;
+  const start=base?base.start:Math.floor(pts[0][0]/H)*H,end0=base?base.start+(base.oi.length-1)*H:-Infinity;
+  const extra=pts.filter(p=>p[0]>end0&&p[1]>0);if(!extra.length)return base;
+  const lastT=Math.max(...extra.map(p=>Math.floor(p[0]/H)*H));const n=Math.round((lastT-start)/H)+1;
+  if(n<=0||n>24*400)return base;
+  const oi=new Array(n).fill(null);if(base)base.oi.forEach((v,i)=>{if(i<n)oi[i]=v;});
+  for(const p of extra){const i=Math.round((Math.floor(p[0]/H)*H-start)/H);if(i>=0&&i<n)oi[i]=p[1];}
+  return{start,interval:H,oi,updatedAt:Math.max(base?base.updatedAt||0:0,...extra.map(p=>p[0]))};}
+// OI (coins) at unix-ms t, linear across gaps; null outside coverage
+function seriesAt(sr,t){if(!sr||!Array.isArray(sr.oi))return null;const s=sr.start*1000,h=sr.interval*1000,a=sr.oi,f=(t-s)/h;if(f<0||f>a.length-1)return null;
+  let i=Math.floor(f),j=Math.ceil(f);while(i>=0&&a[i]==null)i--;while(j<a.length&&a[j]==null)j++;
+  if(i<0&&j>=a.length)return null;if(i<0)return a[j];if(j>=a.length)return a[i];if(i===j)return a[i];
+  return a[i]+(a[j]-a[i])*(f-i)/(j-i);}
+// hourly where covered, 4h history before that
+function oiAt(k,t){const v=seriesAt(k,t);return v!=null?v:(t<k.start*1000?seriesAt(k.coarse,t):null);}
+// funding tilts the long/short split (positive funding = more longs open)
+function longShare(k,t){const r=seriesAt(k.funding?{start:k.funding.start,interval:k.funding.interval,oi:k.funding.rate}:null,t);
+  if(r==null)return .5;return .5+Math.max(-1,Math.min(1,r*8/0.0005))*0.2;}
+function priceAt(t){const P=data.prices,n=P.length,f=(t-data.startTs)/(data.endTs-data.startTs)*(n-1);
+  if(f<=0)return P[0];if(f>=n-1)return P[n-1];const i=Math.floor(f);return P[i]+(P[i+1]-P[i])*(f-i);}
+
+// ---------- model ----------
+function build(){
+  const P=data.prices,n=P.length,k=isSample?null:kr();
+  const lo=Math.min(...P),hi=Math.max(...P);
+  const pmin=lo*0.9,pmax=hi*1.1,step=(pmax-pmin)/BINS;
+  const bin=p=>Math.floor((p-pmin)/step);
+  const tiers=TIERS.filter(t=>state.tiers.has(t.L));
+  const wsum=tiers.reduce((a,t)=>a+t.w,0)||1;
+  const tAt=i=>data.startTs+(data.endTs-data.startTs)*i/(n-1);
+  // per-step new-position size in USD; real ΔOI where covered, volatility proxy elsewhere
+  const add=new Float64Array(n),close=new Float64Array(n),real=new Uint8Array(n),base=new Float64Array(n);
+  let prevOI=null,realSum=0,realN=0;
+  // other exchanges count only once their history covers the whole range (else a large exchange
+  // with a few hours of history would swamp the Kraken history)
+  const cov0=sr=>sr&&seriesAt(sr,tAt(0))!=null?sr:null;
+  const cdc=k?cov0(cdcOf(k,state.coin)):null,hlS=k?cov0(k.hl):null;
+  for(let i=1;i<n;i++){const o0=k?oiAt(k,tAt(i-1)):null,o1=k?oiAt(k,tAt(i)):null;
+    const c0=cdc?seriesAt(cdc,tAt(i-1)):null,c1=cdc?seriesAt(cdc,tAt(i)):null;
+    const h0=hlS?seriesAt(hlS,tAt(i-1)):null,h1=hlS?seriesAt(hlS,tAt(i)):null;
+    const kd=o0!=null&&o1!=null?o1-o0:null,cd=c0!=null&&c1!=null?c1-c0:null,hd=h0!=null&&h1!=null?h1-h0:null;
+    base[i]=((kd!=null?o0:0)+(cd!=null?c0:0)+(hd!=null?h0:0))*P[i-1];
+    if(kd!=null||cd!=null||hd!=null){const d=((kd||0)+(cd||0)+(hd||0))*P[i];real[i]=1;if(d>0){add[i]=d;}else close[i]=-d;realSum+=Math.abs(d);realN++;}}
+  const proxyScale=realN?realSum/realN/0.006:1e6; // map |log return| proxy onto the same USD scale
+  for(let i=1;i<n;i++)if(!real[i])add[i]=Math.abs(Math.log(P[i]/P[i-1]))*proxyScale+proxyScale*0.0005;
+  let longs=[],shorts=[];
+  const grid=new Float32Array(n*BINS),gL=new Float32Array(n*BINS),gS=new Float32Array(n*BINS);
+  let openUSD=0;
+  for(let i=0;i<n;i++){
+    const p=P[i],prev=i?P[i-1]:p,low=Math.min(p,prev),high=Math.max(p,prev);
+    if(i){longs=longs.filter(l=>l.p<low);shorts=shorts.filter(s=>s.p>high);}
+    // an OI drop closes that share of ALL open positions, not only the ones mapped here
+    if(close[i]>0){const tot=base[i]||(longs.reduce((a,l)=>a+l.s,0)+shorts.reduce((a,s)=>a+s.s,0));
+      if(tot>0){const f=Math.max(0,1-close[i]/tot);for(const l of longs)l.s*=f;for(const s of shorts)s.s*=f;}}
+    if(add[i]>0){const ls=k?longShare(k,tAt(i)):.5;for(const t of tiers){const sz=add[i]*t.w/wsum;
+      longs.push({p:p*(1-1/t.L+MM),s:sz*ls});shorts.push({p:p*(1+1/t.L-MM),s:sz*(1-ls)});}}
+    const row=i*BINS;
+    for(const l of longs){const b=bin(l.p);if(b>=0&&b<BINS){gL[row+b]+=l.s;grid[row+b]+=l.s;}}
+    for(const s of shorts){const b=bin(s.p);if(b>=0&&b<BINS){gS[row+b]+=s.s;grid[row+b]+=s.s;}}
+  }
+  const pl=gL.slice((n-1)*BINS,n*BINS),ps=gS.slice((n-1)*BINS,n*BINS);
+  let mx=0;for(const v of grid)if(v>mx)mx=v;
+  // actual liquidation markers inside the range
+  const marks=[];
+  const addMarks=(sr,before)=>{if(!sr||!Array.isArray(sr.liq))return;for(let j=0;j<sr.liq.length;j++){const v=+sr.liq[j];if(!v)continue;
+    const t=(sr.start+j*sr.interval+sr.interval/2)*1000;if(t<data.startTs||t>data.endTs||(before&&t>=before))continue;const px=priceAt(t);marks.push({t,p:px,usd:v*px});}};
+  if(k){addMarks(k,0);addMarks(k.coarse,k.start*1000);}
+  const cov=real.reduce((a,b)=>a+b,0)/Math.max(1,n-1);
+  model={grid,gL,gS,n,pmin,pmax,step,max:mx,pl,ps,marks,cov,real,sized:cov>0.9&&!isSample,tAt,srcs:["Kraken",cdc?"Crypto.com":null,hlS?"Hyperliquid":null].filter(Boolean)};
+  if(replayI!=null&&replayI>=n)replayI=null;
+  syncReplayUI();
+  stats(k,P[n-1]);
+  summarize();
+}
+// the moment being looked at: live (right edge) or a replayed hour
+function view(){const n=model.n,i=replayI==null?n-1:replayI;
+  return{i,live:replayI==null,cur:data.prices[i],t:model.tAt(i),pl:model.gL.subarray(i*BINS,(i+1)*BINS),ps:model.gS.subarray(i*BINS,(i+1)*BINS)};}
+function summarize(){const v=view(),{pl,ps,cur}=v;let bl=-1,bs=-1;
+  for(let b=0;b<BINS;b++){const m=model.pmin+(b+.5)*model.step;
+    if(m<cur&&pl[b]>0&&(bl<0||pl[b]>pl[bl]))bl=b;if(m>cur&&ps[b]>0&&(bs<0||ps[b]>ps[bs]))bs=b;}
+  const mid=b=>model.pmin+(b+.5)*model.step,size=x=>model.sized?" · ~"+usd(x):"";
+  if(bs>=0){$("sP").textContent=fmt(mid(bs))+size(ps[bs]);$("sD").textContent="+"+((mid(bs)/cur-1)*100).toFixed(1)+"%";}else{$("sP").textContent="—";$("sD").textContent="";}
+  if(bl>=0){$("lP").textContent=fmt(mid(bl))+size(pl[bl]);$("lD").textContent=((mid(bl)/cur-1)*100).toFixed(1)+"%";}else{$("lP").textContent="—";$("lD").textContent="";}
+  $("levelsTitle").firstChild.textContent=v.live?"Open liquidation levels now":"Levels on "+when(v.t);
+  readout(cur,bl,bs,mid,v);
+  if(pinP!=null)showPin();}
+function when(t){return new Date(t).toLocaleString([], {month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});}
+function stats(k,cur){
+  const mode=$("mode");
+  const f8=k&&!isSample?(k.fundingNow8h??(k.funding?(()=>{for(let j=k.funding.rate.length-1;j>=0;j--)if(k.funding.rate[j]!=null)return k.funding.rate[j]*8;return null})():null)):null;
+  if(f8!=null){$("fdV").textContent=(f8>=0?"+":"")+(f8*100).toFixed(4)+"%";$("fdC").textContent=f8>0.00005?"longs pay shorts · more longs open":f8<-0.00005?"shorts pay longs · more shorts open":"roughly neutral";}
+  else{$("fdV").textContent="—";$("fdC").textContent="";}
+  if(!k||isSample){oiUSD=null;mode.className="badge";$("modeTxt").textContent=isSample?"Sample data":"Estimate · no Kraken data";
+    $("oiV").textContent="—";$("oiC").textContent="";$("lqV").textContent="—";$("dotKey").hidden=$("dotLbl").hidden=true;return;}
+  const cov=model.cov;mode.className="badge real";
+  const usesCoarse=k.coarse&&data.startTs<k.start*1000;
+  const src=(model.srcs||["Kraken"]).join(" + ")+" OI";
+  $("modeTxt").textContent=(cov>0.98?src:src+" · "+Math.round(cov*100)+"% of range")+(usesCoarse?" · hourly + 4h":"");
+  $("dotKey").hidden=$("dotLbl").hidden=false;
+  let last=k.oi.length-1;while(last>=0&&k.oi[last]==null)last--;
+  let d24=last-Math.round(86400/k.interval);while(d24>=0&&k.oi[d24]==null)d24--;
+  if(last>=0){const kr=k.oi[last]*cur,cs=cdcOf(k,state.coin),cd=cs?(()=>{for(let j=cs.oi.length-1;j>=0;j--)if(cs.oi[j]!=null)return cs.oi[j];return null})():null;
+    const lv=liveFor(state.coin);
+    const cdFresh=cd!=null&&Date.now()-(cs.updatedAt||0)*1000<3*3600e3;
+    const cdUSD=lv&&lv.oi!=null?lv.oi*cur:cdFresh?cd*cur:null;
+    oiUSD=kr+(cdUSD||0);$("oiV").textContent=usd(oiUSD);
+    let line="Kraken "+usd(kr);
+    if(d24>=0){const c=(k.oi[last]/k.oi[d24]-1)*100;line+=" ("+(c>=0?"+":"")+c.toFixed(1)+"% 24h)";}
+    if(cdUSD!=null)line+=" + Crypto.com "+usd(cdUSD)+(lv&&lv.oi!=null?" live":"");
+    const hlv=k.hl&&Array.isArray(k.hl.oi)?(()=>{for(let j=k.hl.oi.length-1;j>=0;j--)if(k.hl.oi[j]!=null)return k.hl.oi[j];return null})():null;
+    if(hlv!=null&&Date.now()-(k.hl.updatedAt||0)*1000<3*3600e3){oiUSD+=hlv*cur;$("oiV").textContent=usd(oiUSD);line+=" + Hyperliquid "+usd(hlv*cur);}
+    $("oiC").textContent=line;}
+  const nh=Math.round(86400/k.interval);let lq=0;for(let j=Math.max(0,k.liq.length-nh);j<k.liq.length;j++)lq+=(+k.liq[j]||0);
+  $("lqV").textContent=usd(lq*cur);
+  const thru=new Date(Math.min(((k.updatedAt||0)+(k.interval||3600))*1000,Date.now())),age=Date.now()-thru.getTime();
+  $("lqC").textContent="Kraken through "+thru.toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})+(age>3*3600e3?" · "+Math.round(age/3600e3)+"h behind":"");
+}
+
+// ---------- drawing ----------
+const AX=64,PADT=10,PADB=26;
+function fit(c){const r=c.getBoundingClientRect(),d=devicePixelRatio||1;c.width=Math.round(r.width*d);c.height=Math.round(r.height*d);const x=c.getContext("2d");x.setTransform(d,0,0,d,0,0);return[x,r.width,r.height];}
+function draw(){
+  if(!model)return;
+  const c=$("heat");const[x,W,H]=fit(c);
+  const {grid,n,pmin,pmax,max}=model,P=data.prices;
+  const pw=W-AX,ph=H-PADT-PADB;
+  x.fillStyle=css("--plot");x.fillRect(0,0,W,H);
+  const off=document.createElement("canvas");off.width=n;off.height=BINS;
+  const oc=off.getContext("2d"),img=oc.createImageData(n,BINS);
+  for(let i=0;i<n;i++)for(let b=0;b<BINS;b++){
+    const v=grid[i*BINS+b];if(!v)continue;
+    const c4=ramp(Math.pow(v/max,0.55));const kk=((BINS-1-b)*n+i)*4;
+    img.data[kk]=c4[0];img.data[kk+1]=c4[1];img.data[kk+2]=c4[2];img.data[kk+3]=c4[3]*255;}
+  oc.putImageData(img,0,0);
+  x.imageSmoothingEnabled=true;x.drawImage(off,0,PADT,pw,ph);
+  const y=p=>PADT+(1-(p-pmin)/(pmax-pmin))*ph;
+  const tx=t=>(t-data.startTs)/(data.endTs-data.startTs)*pw;
+  // shade the part of the range without Kraken data
+  if(model.cov>0&&model.cov<0.98){let first=model.real.indexOf(1);const fx=first/(n-1)*pw;
+    x.fillStyle="rgba(6,9,20,.45)";x.fillRect(0,PADT,fx,ph);x.fillStyle=css("--plot-text");x.font="11px "+css("--mono");x.textBaseline="top";
+    if(fx>120)x.fillText("estimate (before Kraken data)",8,PADT+6);}
+  x.font="11px "+css("--mono");x.fillStyle=css("--plot-text");x.textBaseline="middle";
+  for(const t of niceTicks(pmin,pmax,6)){const yy=y(t);x.strokeStyle=css("--plot-grid");x.beginPath();x.moveTo(0,yy);x.lineTo(pw,yy);x.stroke();x.fillText(fmt(t),pw+6,yy);}
+  x.textBaseline="alphabetic";
+  for(let k=0;k<=4;k++){const t=data.startTs+(data.endTs-data.startTs)*k/4,xx=pw*k/4,d=new Date(t);
+    const lab=state.days==="1"?d.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}):d.toLocaleDateString([], {month:"short",day:"numeric"});
+    x.textAlign=k===0?"left":k===4?"right":"center";x.fillText(lab,Math.min(Math.max(xx,4),pw-4),H-8);}
+  x.textAlign="left";
+  x.strokeStyle=css("--plot-line");x.lineWidth=1.4;x.beginPath();
+  P.forEach((p,i)=>{const xx=i/(n-1)*pw;i?x.lineTo(xx,y(p)):x.moveTo(xx,y(p));});x.stroke();
+  // actual liquidations
+  if(model.marks.length){const mxu=Math.max(...model.marks.map(m=>m.usd));
+    for(const m of model.marks){if(m.usd<mxu*0.01)continue;const r=2+9*Math.sqrt(m.usd/mxu);x.beginPath();x.arc(tx(m.t),y(m.p),r,0,Math.PI*2);
+      x.fillStyle="rgba(255,255,255,.14)";x.fill();x.lineWidth=1.3;x.strokeStyle="rgba(255,255,255,.9)";x.stroke();}}
+  const cp=P[n-1],cy=y(cp);x.setLineDash([3,3]);x.strokeStyle="rgba(255,255,255,.35)";x.lineWidth=1;x.beginPath();x.moveTo(0,cy);x.lineTo(pw,cy);x.stroke();x.setLineDash([]);
+  x.fillStyle="#ffffff";x.fillRect(pw,cy-9,AX,18);x.fillStyle="#060914";x.textBaseline="middle";x.fillText(fmt(cp),pw+5,cy);
+  if(replayI!=null){const rx=replayI/(n-1)*pw;x.fillStyle="rgba(6,9,20,.55)";x.fillRect(rx,PADT,pw-rx,ph);
+    x.strokeStyle="#8b9bff";x.lineWidth=1.5;x.beginPath();x.moveTo(rx,PADT);x.lineTo(rx,PADT+ph);x.stroke();
+    x.beginPath();x.arc(rx,y(P[replayI]),4.5,0,Math.PI*2);x.fillStyle="#8b9bff";x.fill();}
+  if(pinP!=null&&pinP>pmin&&pinP<pmax){const py=y(pinP);x.setLineDash([6,4]);x.strokeStyle="#8b9bff";x.lineWidth=1.6;x.beginPath();x.moveTo(0,py);x.lineTo(pw,py);x.stroke();x.setLineDash([]);
+    x.fillStyle="#8b9bff";x.fillRect(pw,py-9,AX,18);x.fillStyle="#060914";x.textBaseline="middle";x.fillText(fmt(pinP),pw+5,py);}
+  if(isSample){x.fillStyle="rgba(255,255,255,.55)";x.font="600 12px "+css("--body");x.textBaseline="top";x.fillText("SAMPLE DATA — connect CoinGecko for live prices",10,PADT+6);}
+  drawProfile();
+}
+function niceTicks(a,b,c){const r=(b-a)/c,m=Math.pow(10,Math.floor(Math.log10(r)));const s=[1,2,2.5,5,10].map(k=>k*m).find(k=>k>=r);const out=[];for(let t=Math.ceil(a/s)*s;t<=b;t+=s)out.push(t);return out;}
+function drawProfile(){
+  const c=$("profile");const[x,W,H]=fit(c);x.clearRect(0,0,W,H);
+  const vw=view(),{pl,ps,cur}=vw,{pmin,pmax}=model;
+  let mx=0;for(let b=0;b<BINS;b++)mx=Math.max(mx,pl[b],ps[b]);mx=mx||1;
+  const bh=H/BINS,lc=css("--long"),sc=css("--short");
+  for(let b=0;b<BINS;b++){const yy=H-(b+1)*bh;
+    if(pl[b]){x.fillStyle=lc;x.fillRect(0,yy,pl[b]/mx*W,Math.max(bh,1));}
+    if(ps[b]){x.fillStyle=sc;x.fillRect(0,yy,ps[b]/mx*W,Math.max(bh,1));}}
+  const ex=vw.live?extras():{};const yP=p=>H-(p-pmin)/(pmax-pmin)*H;
+  $("xleg").hidden=!(ex.hl||ex.book);$("xlegHl").hidden=!ex.hl;$("xlegBk").hidden=!ex.book;
+  if(ex.book){const walls=[...(ex.book.bids||[]),...(ex.book.asks||[])].filter(w=>w[0]>pmin&&w[0]<pmax);const mw=Math.max(1,...walls.map(w=>w[1]));
+    x.strokeStyle=css("--muted");x.lineWidth=1.2;for(const[p,u]of walls){const w=Math.max(6,u/mw*W*0.45),yy=yP(p);x.strokeRect(W-w-0.5,yy-2.5,w,5);}}
+  if(ex.hl){const ps=ex.hl.positions.filter(q=>q[0]>pmin&&q[0]<pmax);const mu=Math.max(1,...ps.map(q=>q[1]));
+    for(const[p,u,sd]of ps){const r=2.2+4.5*Math.sqrt(u/mu),yy=yP(p),xx=W*0.62;x.beginPath();x.moveTo(xx,yy-r);x.lineTo(xx+r,yy);x.lineTo(xx,yy+r);x.lineTo(xx-r,yy);x.closePath();
+      x.fillStyle=sd>0?lc:sc;x.fill();x.lineWidth=1;x.strokeStyle=css("--fg");x.stroke();}}
+  const cy=H-(cur-pmin)/(pmax-pmin)*H;x.strokeStyle=css("--fg");x.setLineDash([3,3]);x.beginPath();x.moveTo(0,cy);x.lineTo(W,cy);x.stroke();x.setLineDash([]);
+  x.font="10.5px "+css("--mono");x.textAlign="right";x.textBaseline="bottom";{const lab=(vw.live?"now ":"then ")+fmt(cur),tw=x.measureText(lab).width;x.fillStyle=css("--surface");x.fillRect(W-tw-5,cy-16,tw+5,13);x.fillStyle=css("--muted");x.fillText(lab,W-2,cy-3);}
+}
+
+const tip=$("tip");
+$("heat").addEventListener("pointermove",e=>{
+  if(!model)return;const r=e.currentTarget.getBoundingClientRect();
+  const mx=e.clientX-r.left,my=e.clientY-r.top,pw=r.width-AX,ph=r.height-PADT-PADB;
+  if(mx>pw||my<PADT||my>PADT+ph){tip.hidden=true;return;}
+  const i=Math.min(model.n-1,Math.round(mx/pw*(model.n-1)));
+  const p=model.pmin+(1-(my-PADT)/ph)*(model.pmax-model.pmin);
+  const b=Math.floor((p-model.pmin)/model.step);const v=model.grid[i*BINS+b]||0;
+  const t=data.startTs+(data.endTs-data.startTs)*i/(model.n-1);
+  const cur=data.prices[data.prices.length-1],pct=(p/cur-1)*100;
+  const lines=[new Date(t).toLocaleString([], {month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}),
+    fmt(p)+"  ("+(pct>=0?"+":"")+pct.toFixed(1)+"% from now)",
+    v?(model.sized?"~"+usd(v)+" of ":"Intensity "+Math.round(v/model.max*100)+"% · ")+(p>=priceAt(t)?"shorts":"longs")+" liquidate here":"No estimated liquidations here",
+    "Click to test this price"];
+  const near=model.marks.find(m=>Math.abs((m.t-t)/(data.endTs-data.startTs)*pw)<6);
+  if(near)lines.push("Kraken liquidated "+usd(near.usd)+" this hour");
+  tip.innerHTML="";lines.forEach(s=>{const d=document.createElement("div");d.textContent=s;tip.appendChild(d);});
+  tip.hidden=false;const tx2=mx+14>r.width-190?mx-190:mx+14;tip.style.left=tx2+"px";tip.style.top=Math.max(4,my-60)+"px";
+});
+$("heat").addEventListener("pointerleave",()=>tip.hidden=true);
+function priceFromY(el,clientY,top,bottom){const r=el.getBoundingClientRect();const ph=r.height-top-bottom;return model.pmin+(1-(clientY-r.top-top)/ph)*(model.pmax-model.pmin);}
+$("heat").addEventListener("click",e=>{if(!model)return;const r=e.currentTarget.getBoundingClientRect();if(e.clientX-r.left>r.width-AX)return;
+  pinP=Math.max(model.pmin,Math.min(model.pmax,priceFromY(e.currentTarget,e.clientY,PADT,PADB)));draw();showPin();tip.hidden=true;});
+$("heat").addEventListener("keydown",e=>{if(!model)return;const cur=data.prices[data.prices.length-1];
+  if(e.key==="ArrowUp"||e.key==="ArrowDown"){e.preventDefault();pinP=(pinP??cur)*(e.key==="ArrowUp"?1.005:0.995);}
+  else if(e.key==="Enter"){pinP=pinP??cur*1.02;}else if(e.key==="Escape"){clearPin();return;}else return;
+  pinP=Math.max(model.pmin,Math.min(model.pmax,pinP));draw();showPin();});
+let rt;addEventListener("resize",()=>{clearTimeout(rt);rt=setTimeout(draw,120);});
+// ---------- resizable chart ----------
+const MAIN=document.querySelector(".main");let raf=0;
+const redraw=()=>{if(raf)return;raf=requestAnimationFrame(()=>{raf=0;draw();});};
+if(window.ResizeObserver)new ResizeObserver(redraw).observe($("heat"));
+const SIZE_DEF={h:null,w:230};let size={...SIZE_DEF};
+try{Object.assign(size,JSON.parse(localStorage.getItem("liqhm_size")||"{}"));}catch(e){}
+function applySize(){MAIN.style.setProperty("--chartH",size.h?size.h+"px":"clamp(320px,58vh,560px)");MAIN.style.setProperty("--sideW",size.w+"px");
+  $("vgrip").setAttribute("aria-valuenow",String(Math.round(size.h||$("heat").getBoundingClientRect().height)));$("hgrip").setAttribute("aria-valuenow",String(size.w));}
+function saveSize(){try{localStorage.setItem("liqhm_size",JSON.stringify(size))}catch(e){}}
+const H_MAX=1600,clampH=h=>Math.round(Math.max(240,Math.min(H_MAX,h))),clampW=w=>Math.round(Math.max(190,Math.min(Math.max(240,MAIN.getBoundingClientRect().width*0.5),w)));
+function dragGrip(el,axis){
+  el.addEventListener("mousedown",e=>e.preventDefault());
+  el.addEventListener("pointerdown",e=>{if(e.button)return;e.preventDefault();el.setPointerCapture(e.pointerId);el.classList.add("dragging");
+    document.body.classList.add("resizing");document.body.style.cursor=axis==="y"?"ns-resize":"ew-resize";
+    const x0=e.clientX,y0=e.clientY,h0=$("heat").getBoundingClientRect().height,w0=$("hgrip").nextElementSibling.getBoundingClientRect().width;
+    const mv=ev=>{if(axis==="y")size.h=clampH(h0+ev.clientY-y0);else size.w=clampW(w0-(ev.clientX-x0));applySize();};
+    const noSel=ev=>ev.preventDefault();document.addEventListener("selectstart",noSel);
+    const up=()=>{document.removeEventListener("selectstart",noSel);try{getSelection().removeAllRanges()}catch(_){}el.classList.remove("dragging");document.body.classList.remove("resizing");document.body.style.cursor="";
+      el.removeEventListener("pointermove",mv);el.removeEventListener("pointerup",up);el.removeEventListener("pointercancel",up);saveSize();redraw();syncSizeBtns();};
+    el.addEventListener("pointermove",mv);el.addEventListener("pointerup",up);el.addEventListener("pointercancel",up);});
+  el.addEventListener("keydown",e=>{const k=e.key,st=e.shiftKey?60:20;let d=0;
+    if(axis==="y"){if(k==="ArrowDown")d=st;else if(k==="ArrowUp")d=-st;}else{if(k==="ArrowLeft")d=st;else if(k==="ArrowRight")d=-st;}
+    if(!d)return;e.preventDefault();
+    if(axis==="y")size.h=clampH((size.h||$("heat").getBoundingClientRect().height)+d);else size.w=clampW(size.w+d);applySize();saveSize();});
+  el.addEventListener("dblclick",()=>{if(axis==="y")size.h=SIZE_DEF.h;else size.w=SIZE_DEF.w;applySize();saveSize();setTimeout(syncSizeBtns,0);});}
+dragGrip($("vgrip"),"y");dragGrip($("hgrip"),"x");applySize();
+function setExpanded(on){MAIN.classList.toggle("expanded",on);document.body.classList.toggle("has-expanded",on);
+  $("fsBtn").textContent=on?"✕ Exit full screen":"⤢ Full screen";$("fsBtn").setAttribute("aria-pressed",String(on));$("fsBtn").title=on?"Back to the page (Esc)":"Full screen (Esc to exit)";
+  // real browser full screen when allowed; the CSS overlay covers the window either way
+  try{if(on&&!document.fullscreenElement&&MAIN.requestFullscreen)MAIN.requestFullscreen().catch(()=>{});
+    else if(!on&&document.fullscreenElement)document.exitFullscreen().catch(()=>{});}catch(_){}
+  syncSizeBtns();closePop();tip.hidden=true;redraw();if(!on)$("fsBtn").focus({preventScroll:true});}
+document.addEventListener("fullscreenchange",()=>{if(!document.fullscreenElement&&MAIN.classList.contains("expanded"))setExpanded(false);else redraw();syncPageFs();});
+// whole-page full screen (header button and the F key); falls back to the chart overlay where blocked
+function syncPageFs(){const on=document.fullscreenElement===document.documentElement;const b=$("pageFs");
+  b.lastChild.textContent=on?" Exit full screen":" Full screen";b.firstChild.textContent=on?"✕":"⤢";b.setAttribute("aria-pressed",String(on));b.title=on?"Exit full screen (Esc or F)":"Full screen (F)";}
+async function togglePageFs(){
+  if(document.fullscreenElement){try{await document.exitFullscreen();}catch(_){}return;}
+  if(MAIN.classList.contains("expanded")){setExpanded(false);return;}
+  const el=document.documentElement;let ok=false;
+  try{if(el.requestFullscreen&&document.fullscreenEnabled!==false){await el.requestFullscreen();ok=true;}}catch(_){}
+  if(!ok)setExpanded(true);}
+$("pageFs").onclick=e=>{e.stopPropagation();togglePageFs();};
+document.addEventListener("keydown",e=>{if((e.key==="f"||e.key==="F")&&!e.metaKey&&!e.ctrlKey&&!e.altKey&&!/INPUT|TEXTAREA|SELECT/.test((e.target.tagName||""))){e.preventDefault();togglePageFs();}});
+// − / + buttons: step through chart heights
+const STEPS=[280,360,460,560,700,860,1050,1300,1600];
+function curH(){return size.h||Math.round($("heat").getBoundingClientRect().height);}
+function syncSizeBtns(){const ex=MAIN.classList.contains("expanded"),h=curH();$("szDown").disabled=ex||h<=STEPS[0];$("szUp").disabled=ex||h>=STEPS[STEPS.length-1];}
+function stepSize(dir){const h=curH();const nx=dir>0?STEPS.find(v=>v>h+10):[...STEPS].reverse().find(v=>v<h-10);if(nx==null)return;
+  size.h=clampH(nx);applySize();saveSize();syncSizeBtns();redraw();}
+$("szUp").onclick=e=>{e.stopPropagation();stepSize(1);};$("szDown").onclick=e=>{e.stopPropagation();stepSize(-1);};
+setTimeout(syncSizeBtns,0);
+$("fsBtn").onclick=e=>{e.stopPropagation();setExpanded(!MAIN.classList.contains("expanded"));};
+matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change",draw);
+
+// ---------- profile hover / click ----------
+function profAt(e){const c=$("profile"),r=c.getBoundingClientRect();const f=1-(e.clientY-r.top)/r.height;const p=model.pmin+f*(model.pmax-model.pmin);
+  const b=Math.max(0,Math.min(BINS-1,Math.floor((p-model.pmin)/model.step)));return{p,b};}
+$("profile").addEventListener("pointermove",e=>{if(!model)return;const{p,b}=profAt(e),vw=view(),cur=vw.cur;
+  const v=p>=cur?vw.ps[b]:vw.pl[b],side=p>=cur?"shorts":"longs",pct=(p/cur-1)*100;
+  let t=fmt(p)+" ("+(pct>=0?"+":"")+pct.toFixed(1)+"%) · "+(v?(model.sized?"~"+usd(v)+" ":"")+side:"nothing estimated");
+  if(vw.live){const ex=extras(),tol=model.step*1.5;
+    if(ex.hl){const near=ex.hl.positions.filter(q=>Math.abs(q[0]-p)<=tol);if(near.length)t+=" · real: "+usd(near.reduce((a,q)=>a+q[1],0))+" on Hyperliquid";}
+    if(ex.book){const w=[...(ex.book.bids||[]),...(ex.book.asks||[])].find(q=>Math.abs(q[0]-p)<=tol);if(w)t+=" · Kraken wall "+usd(w[1]);}}
+  $("proftip").textContent=t;});
+$("profile").addEventListener("pointerleave",()=>{$("proftip").textContent="Hover or tap a bar for details";});
+$("profile").addEventListener("click",e=>{if(!model)return;pinP=profAt(e).p;draw();showPin();});
+
+// ---------- plain-language readout ----------
+function readout(cur,bl,bs,mid,v){
+  const el=$("readout"),coin=COINS.find(c=>c[0]===state.coin)[1],sized=model.sized;
+  const sum=a=>a.reduce((x,y)=>x+y,0),above=sum(Array.from(v.ps)),below=sum(Array.from(v.pl));
+  el.textContent="";const add=(t,cls,bold)=>{const n=document.createElement(bold?"b":"span");if(cls)n.className=cls;n.textContent=t;el.appendChild(n);};
+  if(isSample)add("Sample data, for illustration. ");
+  if(!v.live){add("Replay · "+when(v.t)+": ","",1);add(coin+" was at ");}else add(coin+" is at ");
+  add(fmt(cur),null,1);add(". ");
+  if(bs>=0){add("Above, the biggest pool of short liquidations is at ");add(fmt(mid(bs)),"up",1);add(" (+"+((mid(bs)/cur-1)*100).toFixed(1)+"%"+(sized?", ~"+usd(v.ps[bs]):"")+"). ");}
+  if(bl>=0){add("Below, the biggest pool of long liquidations is at ");add(fmt(mid(bl)),"dn",1);add(" ("+((mid(bl)/cur-1)*100).toFixed(1)+"%"+(sized?", ~"+usd(v.pl[bl]):"")+"). ");}
+  if(above+below>0){const r=above/(above+below);
+    const tw=v.live?" right now":" at that time";
+    add(r>0.6?"More of the estimated liquidations sit above the price"+tw+".":r<0.4?"More of the estimated liquidations sit below the price"+tw+".":"Estimated liquidations are fairly balanced above and below the price.");}
+  if(v.live&&!isSample){const ex=extras();
+    if(ex.hl){const ps=ex.hl.positions,bin=p=>Math.round(p/(cur*0.005));const grp=(sd,f)=>{const g={};for(const q of ps)if(q[2]===sd&&f(q[0])){const b=bin(q[0]);g[b]=(g[b]||0)+q[1];}
+        const ks=Object.keys(g);if(!ks.length)return null;const b=ks.reduce((a,c)=>g[c]>g[a]?c:a);return{p:b*cur*0.005,u:g[b]};};
+      const L=grp(1,p=>p<cur&&p>cur*0.85),S=grp(-1,p=>p>cur&&p<cur*1.15);
+      if(L||S){add(" Real positions on Hyperliquid: ");
+        if(L){add(usd(L.u)+" of longs would be liquidated near ");add(fmt(L.p),"dn",1);add(" ("+((L.p/cur-1)*100).toFixed(1)+"%)"+(S?", and ":". "));}
+        if(S){add(usd(S.u)+" of shorts near ");add(fmt(S.p),"up",1);add(" (+"+((S.p/cur-1)*100).toFixed(1)+"%). ");}}}
+    if(ex.book){const w=[...(ex.book.bids||[]).map(q=>[q[0],q[1],"buy"]),...(ex.book.asks||[]).map(q=>[q[0],q[1],"sell"])].filter(q=>Math.abs(q[0]/cur-1)<=0.05);
+      if(w.length){const b=w.reduce((a,c)=>c[1]>a[1]?c:a);add(" The biggest order wall on Kraken near the price is "+usd(b[1])+" of "+b[2]+" orders at ");add(fmt(b[0]),b[2]==="buy"?"dn":"up",1);add(".");}}}
+  if(!isSample&&oiUSD!=null&&oiUSD<5e6)add(" Note: "+coin+"'s futures market on these exchanges is small (about "+usd(oiUSD)+" open), so treat these levels as rough.","",0);
+  if(!isSample&&model.cov>0&&model.cov<0.98)add(" The shaded part of the chart is an estimate from price moves; exchange data starts after it.");
+}
+
+// ---------- test-a-price pin ----------
+function whatIf(p){const v=view(),cur=v.cur;let tot=0,all=0;
+  for(let b=0;b<BINS;b++){const m=model.pmin+(b+.5)*model.step;
+    if(p>cur&&m>cur){all+=v.ps[b];if(m<=p)tot+=v.ps[b];}if(p<cur&&m<cur){all+=v.pl[b];if(m>=p)tot+=v.pl[b];}}
+  return{cur,tot,share:all?tot/all:0};}
+function showPin(){const el=$("pin");if(pinP==null||!model){el.hidden=true;return;}
+  const{cur,tot,share}=whatIf(pinP),pct=(pinP/cur-1)*100,up=pinP>cur,coin=COINS.find(c=>c[0]===state.coin)[1];
+  el.textContent="";const line=(t,cls)=>{const d=document.createElement("div");if(cls)d.className=cls;d.textContent=t;el.appendChild(d);return d;};
+  line(view().live?"Testing a price":"Testing a price · replay "+when(view().t),"t");
+  line("If "+coin+" "+(up?"rises":"falls")+" to "+fmt(pinP)+" ("+(pct>=0?"+":"")+pct.toFixed(1)+"%)");
+  const d=line("");const b=document.createElement("b");
+  b.textContent=model.sized?"~"+usd(tot):Math.round(share*100)+"%";d.append(b," "+(model.sized?"":"of estimated ")+(up?"short":"long")+" positions would be liquidated on the way"+(model.sized?" ("+Math.round(share*100)+"% of all "+(up?"shorts":"longs")+" mapped).":"."));
+  line("Use ↑ ↓ to nudge it.","t");
+  const x=document.createElement("button");x.type="button";x.textContent="Clear test price";x.onclick=clearPin;el.appendChild(x);el.hidden=false;}
+function clearPin(){pinP=null;$("pin").hidden=true;draw();}
+
+// ---------- info popovers ----------
+const INFO={
+  oi:["Open interest","The total value of futures positions still open. More open interest means more positions that could be forced to close. This is Kraken's perpetual futures plus Crypto.com's; the Crypto.com part updates live every 30 seconds (BNB is Kraken only)."],
+  liq:["Liquidated in 24 hours","Dollar value of positions Kraken actually force-closed in the last 24 hours. These real events also appear as white circles on the chart."],
+  overview:["All coins","One row per coin from the hourly exchange update: the biggest estimated cluster of short liquidations above the price and long liquidations below it, with distance in %. \"near\" marks a cluster within the alert distance. Click a row to open that coin."],
+  replay:["Replay","Drag the slider or press Play to step through the selected range. The side panel, clusters and summary show what the map looked like at that moment, so you can see how price behaved around earlier clusters."],
+  fund:["Funding (8h)","Perpetual futures charge a periodic fee between longs and shorts. Positive funding means longs pay shorts, usually because more traders are long; negative means the reverse. The map uses it to tilt how much of each new position is counted as long or short."],
+  levels:["Liquidation levels right now","Each bar estimates how much money would be liquidated at that price if it were reached now. Teal bars above the price are shorts; red bars below are longs. Click a bar to test that price."],
+  cluster:["Clusters","The single price with the most estimated liquidations above and below today's price. Traders watch these because a burst of forced buying or selling can speed a move up once price gets there."],
+  real:["Real positions and order walls","Diamonds are actual open positions on Hyperliquid, the largest on-chain futures exchange, placed at their real liquidation price. Positions there are public, so these are not estimates; they cover its ~400 largest accounts plus recent traders, refreshed hourly. Outlined bars from the right are large resting orders in Kraken's order book (within 10% of the price), where price may stall. Both show the latest hourly snapshot and are hidden during replay."],
+  lev:["Leverage","Traders borrow to make positions bigger. At 10× a move of about 10% against a position wipes it out; at 100×, about 1%. Untick tiers to see where only lower- or higher-leverage traders would be liquidated."]};
+const pop=document.createElement("div");pop.className="pop";pop.hidden=true;pop.setAttribute("role","dialog");document.body.appendChild(pop);
+let popBtn=null;
+function place(elRect){pop.style.left="0px";pop.style.top="0px";const w=pop.offsetWidth,h=pop.offsetHeight,vw=innerWidth,vh=innerHeight;
+  let l=Math.min(Math.max(12,elRect.left+elRect.width/2-w/2),vw-w-12),t=elRect.bottom+8;if(t+h>vh-12)t=Math.max(12,elRect.top-h-8);
+  pop.style.left=l+"px";pop.style.top=t+"px";}
+function closePop(){pop.hidden=true;if(popBtn){popBtn.setAttribute("aria-expanded","false");popBtn=null;}}
+function openInfo(btn){const[k]=[btn.dataset.info];const[t,body]=INFO[k];
+  if(popBtn===btn){closePop();return;}closePop();
+  pop.textContent="";const h=document.createElement("h3");h.textContent=t;const pp=document.createElement("p");pp.textContent=body;pop.append(h,pp);
+  pop.hidden=false;place(btn.getBoundingClientRect());btn.setAttribute("aria-expanded","true");popBtn=btn;}
+document.querySelectorAll(".ibtn").forEach(b=>b.addEventListener("click",e=>{e.stopPropagation();endTour();openInfo(b);}));
+document.addEventListener("click",e=>{if(!pop.hidden&&!pop.contains(e.target)&&!tourOn)closePop();});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"){if(tourOn)endTour();else if(!pop.hidden)closePop();else if(MAIN.classList.contains("expanded"))setExpanded(false);}});
+addEventListener("scroll",()=>{if(!pop.hidden&&!tourOn)closePop();},{passive:true});
+
+// ---------- guide ----------
+function toggleGuide(open){const g=$("guide"),b=$("guideBtn");const o=open??g.hidden;g.hidden=!o;b.setAttribute("aria-expanded",String(o));b.textContent=o?"Hide guide":"How to read this";if(o)g.scrollIntoView({block:"nearest",behavior:matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth"});}
+$("guideBtn").onclick=()=>toggleGuide();$("guideClose").onclick=()=>{toggleGuide(false);$("guideBtn").focus();};
+
+// ---------- tour ----------
+const TOUR=[
+  [".plotbox","The heat map","Time runs left to right and price runs bottom to top. Brighter bands mark prices where more leveraged positions would be force-closed."],
+  [".plotbox","Price and real liquidations","The white line is the price. White circles are liquidations Kraken actually recorded; a bigger circle means more money. The dashed line is today's price."],
+  ["#readout","The short version","This sentence sums up the chart: where the biggest pools of liquidations sit above and below today's price."],
+  [".side","Levels right now","A snapshot of the right edge of the map. Teal bars are shorts that get liquidated if price rises; red bars are longs that get liquidated if price falls."],
+  ["#tiers","Leverage","Higher leverage means a position is wiped out by a smaller move. Untick tiers to focus on the traders you care about."],
+  ["#overview","All coins at a glance","Every coin's biggest clusters above and below its price. \"near\" flags anything within alert distance. Click a row to switch coin."],
+  ["#replay","Replay","Drag through time or press Play to watch clusters build up and get wiped out as price moves through them."],
+  [".plotbox","Test a price","Click or tap anywhere on the chart. A card shows how much would be liquidated if price moved there. Try it now."],
+  [".plotbox","Make it bigger","Use − and + on the chart to make it smaller or bigger, or drag the bar under it. Drag the divider beside the side panel to make that wider. ⤢ Full screen fills your screen; Esc goes back. Double-click a handle to reset."],
+  [".controls","Switch coins and ranges","Pick a coin and a time range. Tap any small ⓘ for an explanation, or open How to read this for a glossary."]];
+let tourOn=false,tourI=0,tourEl=null;
+function tourStep(i){tourI=i;if(tourEl)tourEl.classList.remove("tour-hl");const[sel,t,body]=TOUR[i];tourEl=document.querySelector(sel);
+  tourEl.classList.add("tour-hl");tourEl.scrollIntoView({block:"nearest",behavior:"auto"});
+  pop.textContent="";const h=document.createElement("h3");h.textContent=t;const pp=document.createElement("p");pp.textContent=body;
+  const row=document.createElement("div");row.className="row";const st=document.createElement("span");st.className="step";st.textContent=(i+1)+" of "+TOUR.length;
+  const btns=document.createElement("span");btns.style.display="flex";btns.style.gap="6px";
+  const mk=(txt,cls,fn)=>{const b=document.createElement("button");b.type="button";b.className="gbtn"+(cls?" "+cls:"");b.textContent=txt;b.onclick=e=>{e.stopPropagation();fn();};return b;};
+  if(i>0)btns.append(mk("Back","",()=>tourStep(i-1)));
+  btns.append(i<TOUR.length-1?mk("Next","primary",()=>tourStep(i+1)):mk("Done","primary",endTour));
+  row.append(st,btns);pop.append(h,pp,row);pop.hidden=false;
+  const r=tourEl.getBoundingClientRect();place({left:r.left,width:Math.min(r.width,420),top:r.top,bottom:Math.min(r.bottom,r.top+140)});
+  btns.lastChild.focus({preventScroll:true});}
+function startTour(){closePop();toggleGuide(false);tourOn=true;$("hintbar").hidden=true;try{localStorage.setItem("liqhm_tour","1")}catch(e){}tourStep(0);}
+function endTour(){if(!tourOn)return;tourOn=false;if(tourEl)tourEl.classList.remove("tour-hl");tourEl=null;pop.hidden=true;$("tourBtn").focus({preventScroll:true});}
+$("tourBtn").onclick=e=>{e.stopPropagation();startTour();};
+$("hintTour").onclick=e=>{e.stopPropagation();startTour();};
+$("hintX").onclick=()=>{$("hintbar").hidden=true;try{localStorage.setItem("liqhm_tour","1")}catch(e){}};
+try{if(!localStorage.getItem("liqhm_tour"))$("hintbar").hidden=false;}catch(e){$("hintbar").hidden=false;}
+
+// ---------- replay ----------
+function syncReplayUI(){if(!model)return;const r=$("replayRange");r.max=model.n-1;r.value=replayI??model.n-1;
+  $("replayLbl").textContent=replayI==null?"Live":when(model.tAt(replayI));$("liveBtn").hidden=replayI==null;
+  $("playBtn").textContent=playT?"❚❚ Pause":"▶ Play";$("playBtn").setAttribute("aria-label",playT?"Pause replay":"Play replay");}
+function setReplay(i){if(!model)return;i=Math.max(0,Math.min(model.n-1,Math.round(i)));replayI=i>=model.n-1?null:i;syncReplayUI();summarize();draw();}
+function stopPlay(){if(playT){clearInterval(playT);playT=null;syncReplayUI();}}
+$("replayRange").addEventListener("input",e=>{stopPlay();setReplay(+e.target.value);});
+$("liveBtn").onclick=()=>{stopPlay();setReplay(1e9);};
+$("playBtn").onclick=()=>{if(!model)return;if(playT){stopPlay();return;}
+  if(replayI==null)setReplay(0);const stepN=Math.max(1,Math.ceil(model.n/160));
+  playT=setInterval(()=>{const nx=(replayI??model.n-1)+stepN;setReplay(nx);if(replayI==null)stopPlay();},90);syncReplayUI();};
+
+// ---------- all-coins overview + data status ----------
+function cell(c,cur,cls,alertPct){if(!c)return["—","mut",false];const near=Math.abs(c.pct)<=alertPct;
+  return[fmt(c.price)+" ("+(c.pct>=0?"+":"")+c.pct.toFixed(1)+"%)",cls,near];}
+function renderOverview(){const tb=$("ovTable").tBodies[0];if(!ovDoc||!ovDoc.coins)return;tb.textContent="";
+  const ap=ovDoc.alertPct||1.5,nearNow=[];
+  for(const[id,tk]of COINS){const c=ovDoc.coins[id];const tr=document.createElement("tr");if(id===state.coin)tr.className="sel";
+    const td=(t,cls,chip)=>{const d=document.createElement("td");if(cls)d.className=cls;d.textContent=t;if(chip){const s=document.createElement("span");s.className="chip near";s.textContent="near";s.title="Price is within "+ap+"% of this cluster";d.appendChild(s);}tr.appendChild(d);return d;};
+    const b=document.createElement("button");b.type="button";b.textContent=tk;b.setAttribute("aria-label","Show "+tk+" heat map");b.onclick=e=>{e.stopPropagation();selectCoin(id);};
+    const first=document.createElement("td");first.appendChild(b);tr.appendChild(first);
+    if(!c){td("no data","mut");for(let j=0;j<4;j++)td("");tb.appendChild(tr);continue;}
+    const lv=liveFor(id),px=lv?lv.price:c.price;
+    const pd=td(fmt(px)+(!lv&&c.stale?" ·stale":""));if(lv){const s=document.createElement("span");s.className="lv";s.textContent="live";s.title="Crypto.com, "+new Date(lv.t).toLocaleTimeString();pd.appendChild(s);}
+    const re=x=>x&&{...x,pct:(x.price/px-1)*100};
+    const sh=cell(re(c.shorts&&c.shorts.largest),px,"up",ap),lo=cell(re(c.longs&&c.longs.largest),px,"dn",ap);
+    if(c.sized&&((sh[2]&&c.shorts.largest)||(lo[2]&&c.longs.largest)))nearNow.push(tk+" "+fmt(px)+" is within "+ap+"% of its biggest "+(sh[2]?"short cluster ("+fmt(c.shorts.largest.price)+")":"long cluster ("+fmt(c.longs.largest.price)+")"));
+    td(sh[0],sh[1],sh[2]&&c.sized);td(lo[0],lo[1],lo[2]&&c.sized);
+    td(usd(c.openInterestUSD||0));
+    td(c.funding8h==null?"—":(c.funding8h>=0?"+":"")+(c.funding8h*100).toFixed(4)+"%",c.funding8h>0.00005?"up":c.funding8h<-0.00005?"dn":"mut");
+    tr.onclick=()=>selectCoin(id);tb.appendChild(tr);}
+  const h=(ovDoc.alertHistory||[]).slice(0,3),al=$("alertsLine");al.textContent="";
+  if(nearNow.length){const b=document.createElement("b");b.textContent="Near a cluster now: ";al.appendChild(b);al.appendChild(document.createTextNode(nearNow.join("  ·  ")));al.appendChild(document.createElement("br"));}
+  if(h.length){const b=document.createElement("b");b.textContent="Recent alerts: ";al.appendChild(b);
+    al.appendChild(document.createTextNode(h.map(a=>new Date(a.at*1000).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})+" "+a.message).join("  ·  ")));}
+  else al.appendChild(document.createTextNode("No alerts recently. An alert fires when a price comes within "+ap+"% of a large cluster."));
+  renderStatus();}
+function renderStatus(){const el=$("dstatus");const g=ovDoc&&ovDoc.generatedAt;if(!g){el.textContent="Waiting for exchange data…";return;}
+  const age=(Date.now()/1000-g)/3600;
+  el.textContent="Exchange data updated "+new Date(g*1000).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})+(stDoc&&stDoc.failed&&Object.keys(stDoc.failed).length?" · some coins failed":"");
+  const bk=cdcHourly&&cdcHourly.updatedAt,bkAge=bk?(Date.now()/1000-bk)/3600:99;
+  if(age>2.5&&bkAge<2){el.className="status";el.textContent+=" · Kraken data "+Math.round(age)+"h old; Crypto.com backup "+new Date(bk*1000).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"});}
+  else{el.className="status"+(age>2.5?" warn":"");if(age>2.5)el.textContent+=" · "+Math.round(age)+"h old, the hourly update may have stopped";}
+  if(stDoc&&stDoc.syncError&&(Date.parse(stDoc.syncErrorAt||0)/1000||0)>(stDoc.syncedAt||0)){el.className="status warn";el.textContent+=" · last sync failed: "+String(stDoc.syncError).slice(0,120);}}
+setInterval(renderStatus,60000);
+$("dlBtn").onclick=async()=>{if(!dl||!ovDoc)return;const o={...ovDoc};delete o.alertState;
+  const d=new Date(),pad=n=>String(n).padStart(2,"0");
+  try{await dl.save({filename:"liquidation-levels-"+d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+"-"+pad(d.getHours())+pad(d.getMinutes())+".json",data:JSON.stringify(o,null,1)});}
+  catch(e){if(e&&e.code==="unavailable")$("dlBtn").hidden=true;}};
+
+// ---------- data ----------
+function sample(){
+  const n=state.days==="1"?288:state.days==="7"?168:state.days==="30"?720:1080;const now=Date.now();
+  const base={bitcoin:84000,ethereum:3200,solana:180,ripple:2.4,binancecoin:600,dogecoin:.2,"crypto-com-chain":.066,"pump-fun":.0064}[state.coin]||100;
+  let p=base,seed=7;const rnd=()=>{seed=(seed*16807)%2147483647;return seed/2147483647-.5;};
+  const prices=[];for(let i=0;i<n;i++){p*=1+rnd()*0.012+Math.sin(i/37)*0.0008;prices.push(p);}
+  const span={"1":864e5,"7":6048e5,"30":2592e6,"90":7776e6}[state.days];
+  return{prices,startTs:now-span,endTs:now};
+}
+function liveFor(id){const l=live[id];return l&&Date.now()-l.t<LIVE_MAX_AGE?l:null;}
+// add Crypto.com's live tick to the end of the price history (append or refresh the last point)
+function compose(d){const l=isSample?null:liveFor(state.coin);if(!l||!d)return d;
+  const P=d.prices,n=P.length,last=P[n-1];if(l.t<=d.endTs||Math.abs(l.price/last-1)>0.15)return d;
+  const step=(d.endTs-d.startTs)/(n-1);
+  if(l.t-d.endTs>=step*0.5)return{...d,prices:P.concat(l.price),endTs:l.t,liveTick:true};
+  return{...d,prices:P.slice(0,-1).concat(l.price),endTs:l.t,liveTick:true};}
+function apply(d,sampleMode){
+  if(d.prices.length>900){const st=Math.ceil(d.prices.length/900),P=d.prices,out=[];for(let i=0;i<P.length;i+=st)out.push(P[i]);if((P.length-1)%st)out.push(P[P.length-1]);d={...d,prices:out};}
+  isSample=sampleMode;baseData=d;data=compose(d);d=data;const P=d.prices;const cur=P[P.length-1],first=P[0];
+  $("px").textContent=fmt(cur);const ch=(cur/first-1)*100;
+  $("chg").textContent=(ch>=0?"+":"")+ch.toFixed(2)+"% over "+RANGES.find(r=>r[0]===state.days)[1];
+  build();draw();
+}
+function onErr(err){
+  const msgs={server_not_connected:"Add the CoinGecko connector in claude.ai Settings → Connectors to see live prices.",
+    needs_reauth:"Reconnect CoinGecko in claude.ai Settings → Connectors.",
+    not_in_manifest:"CoinGecko access is off for this page. Showing sample data.",
+    selection_required:"Choose which CoinGecko connector to use when prompted.",
+    blocked_by_policy:"Your organization blocks this CoinGecko tool.",
+    server_unavailable:"CoinGecko didn't respond. Showing the last data loaded.",
+    tool_error:"CoinGecko returned an error: "+(err&&err.message||"")};
+  const code=err&&err.code;
+  const transient=code==="server_unavailable"||code==="tool_error"||code==="upstream_error"||code==="rate_limited";
+  if(transient&&data&&!isSample){setStatus(msgs[code]||"Couldn't refresh. Showing the last data loaded.",true);return;}
+  setStatus(msgs[code]||"Live prices unavailable. Showing sample data.",true);apply(sample(),true);
+}
+async function load(){
+  if(unsub){unsub();unsub=null;}
+  if(!mcp){apply(sample(),true);return;}
+  setStatus("Loading "+COINS.find(c=>c[0]===state.coin)[1]+"…");
+  const key=state.coin+state.days;
+  unsub=mcp.watchTool("CoinGecko","get-coin-market-chart",{id:state.coin,days:state.days},ev=>{
+    if(state.coin+state.days!==key)return;
+    if(ev.type==="error"){onErr(ev.error);return;}
+    const p=ev.result.payload;
+    if(!p||!Array.isArray(p.prices)||p.prices.length<3){onErr({code:"tool_error",message:"no price data"});return;}
+    apply({prices:p.prices,startTs:p.startTs,endTs:p.endTs},false);
+    const at=ev.result.cache?ev.result.cache.storedAt:Date.now();
+    setStatus("Prices: CoinGecko · "+new Date(at).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}));
+  },{cache:{staleTime:30000},refetchInterval:60000});
+}
+// ---------- Crypto.com live layer ----------
+const LIVE_MSG={server_not_connected:"Add the Crypto.com connector in claude.ai Settings → Connectors for live prices.",
+  needs_reauth:"Reconnect Crypto.com in claude.ai Settings → Connectors.",
+  not_in_manifest:"Crypto.com live prices are off for this page.",
+  selection_required:"Choose which Crypto.com connector to use when prompted.",
+  blocked_by_policy:"Your organization blocks Crypto.com here.",
+  server_unavailable:"Crypto.com didn't respond; retrying.",
+  tool_error:"Crypto.com returned an error."};
+function renderLive(pulse){const el=$("lstatus");const l=liveFor(state.coin);el.textContent="";el.className="status";
+  if(!CDC[state.coin]){el.textContent="No Crypto.com market for this coin · hourly data";return;}
+  const dot=document.createElement("span");dot.className="livedot"+(l?"":" off")+(pulse?" pulse":"");el.appendChild(dot);
+  if(l){el.appendChild(document.createTextNode("Live · Crypto.com "+new Date(l.t).toLocaleTimeString([], {hour:"numeric",minute:"2-digit",second:"2-digit"})));
+    const e0=liveErr[state.coin];if(e0&&e0.transient)el.appendChild(document.createTextNode(" · retrying"));return;}
+  const e=liveErr[state.coin];
+  if(e){el.className="status warn";el.textContent=(LIVE_MSG[e.code]||"Live prices unavailable.")+(e.code==="tool_error"&&e.message?" "+String(e.message).slice(0,80):"");}
+  else el.appendChild(document.createTextNode("Connecting to Crypto.com…"));}
+function onLive(id,ev){
+  if(ev.type==="error"){const e=ev.error||{},code=e.code;
+    const transient=code==="server_unavailable"||code==="upstream_error"||code==="rate_limited"||(code==="tool_error"&&live[id]);
+    if(!transient){delete live[id];}
+    liveErr[id]={code,message:e.message,transient};
+    if(id===state.coin){renderLive();if(!transient&&baseData&&!isSample){data=compose(baseData);build();draw();}}
+    renderOverview();return;}
+  const p=ev.result&&ev.result.payload;const price=p&&+p.last,oi=p&&p.open_interest!=null?+p.open_interest:null,t=p&&Date.parse(p.timestamp);
+  if(!(price>0)||!t)return;
+  const prev=live[id];live[id]={price,oi,t};delete liveErr[id];
+  if(id===state.coin){renderLive(!prev||prev.t!==t);
+    if(baseData&&!isSample&&replayI==null&&!playT){const d=compose(baseData);data=d;const cur=d.prices[d.prices.length-1];
+      $("px").textContent=fmt(cur);const ch=(cur/d.prices[0]-1)*100;$("chg").textContent=(ch>=0?"+":"")+ch.toFixed(2)+"% over "+RANGES.find(r=>r[0]===state.days)[1];
+      build();draw();}}
+  renderOverview();}
+function watchLive(){for(const u of liveUnsubs)u();liveUnsubs=[];if(!mcp)return;
+  for(const[id]of COINS){const inst=CDC[id];if(!inst)continue;
+    liveUnsubs.push(mcp.watchTool(CDC_SERVER,CDC_TOOL,{instrument_name:inst},ev=>onLive(id,ev),{cache:{staleTime:20000},refetchInterval:30000}));}
+  renderLive();}
+function watchKraken(){
+  if(dbUnsub){dbUnsub();dbUnsub=null;}
+  if(!db)return;const coin=state.coin;
+  try{dbUnsub=db.doc("kraken/"+coin).onSnapshot(snap=>{
+    kraken[coin]=snap.exists?snap.data():null;
+    if(coin===state.coin&&data){build();draw();}
+  },err=>{if(coin===state.coin)setStatus("Kraken data unavailable here; showing the estimate.",true);});}catch(e){}
+}
+apply(sample(),true);setStatus("Sample data");
+(async()=>{
+  const cl=window.claude;
+  const [m,d]=await Promise.all([cl?cl.use("mcp").catch(()=>null):null,cl?cl.use("db").catch(()=>null):null]);
+  mcp=m;db=d;watchKraken();
+  if(db){try{db.doc("kraken/_overview").onSnapshot(sn=>{ovDoc=sn.exists?sn.data():null;renderOverview();},()=>{});
+    db.doc("kraken/_status").onSnapshot(sn=>{stDoc=sn.exists?sn.data():null;renderStatus();},()=>{});
+    db.doc("kraken/_cdc_hourly").onSnapshot(sn=>{cdcHourly=sn.exists?sn.data():null;renderStatus();if(data&&!isSample){build();draw();}},()=>{});}catch(e){}}
+  else $("dstatus").textContent="Exchange data isn't available in this view.";
+  cl&&cl.use("downloads").then(x=>{dl=x;$("dlBtn").hidden=!dl;}).catch(()=>{});
+  if(mcp){load();watchLive();}else{setStatus("Sample data · live prices need the CoinGecko connector",true);$("lstatus").textContent="";}
+})();
+</script>
